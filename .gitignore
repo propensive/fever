@@ -1,0 +1,7 @@
+.bloop
+.metals
+.bsp
+/out
+/fever
+/fever.jar
+/dist/

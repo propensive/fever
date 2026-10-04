@@ -1,0 +1,12 @@
+# The propensive libraries this repository builds against: one per line, tab-separated, as
+# `repository  version  [commit]`. A version `X.Y.Z` is a GitHub Release; `X.Y.Z-<12 hex>` is a
+# snapshot of an unreleased build, published by `make snapshot` in that repository (the commit
+# column says which commit), and a release here is refused while one is pinned. The build reads
+# this file (`deps` in build.mill); `make sync-deps` and CI install what it names.
+# See propensive/.github for the whole flow.
+#
+# Fever is a Pyrocosm tool, and implements the `lira.tool` contract, which is the `lira-tool` jar
+# of a propensive/lira release.
+propensive/soundness	0.70.0
+propensive/pyrocosm	0.5.0
+propensive/lira	0.1.0

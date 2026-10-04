@@ -1,0 +1,21 @@
+name: CI
+
+# Build every pull request and every merge into main, via the shared Soundness-application
+# workflow — see propensive/.github for what it does and what it expects of this repository (the
+# ./mill wrapper, etc/shared, and the pins in etc/refs).
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    uses: propensive/.github/.github/workflows/scala-ci.yml@main
+    with:
+      compile:       fever.core.compile
+      # The launcher resolves `fever-core` as a published coordinate, so it must be in the local
+      # ivy repository before assembly.
+      publish_local: fever.__
+      assembly:      fever.launcher.assembly

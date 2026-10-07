@@ -43,7 +43,8 @@ make install     # copy it to ~/.local/bin
 make check       # check the sources with flair
 ```
 
-A release is cut by a signed tag, after bumping `feverVersion` in `build.mill` and merging it:
+A release is cut by a signed tag on a commit CI has passed; the tag is the only place the
+version is declared:
 
 ```sh
 git tag -s X.Y.Z && git push --tags

@@ -106,23 +106,18 @@ object Script:
 
     if !rejections.items.nil then abort(Script.Error(Error.Reason.Invalid(rejections.items)))
 
-    Parsed(decode(document.root), body)
+    // Decoding after validation cannot fail structurally, so a failure here is a schema and
+    // model that have drifted apart: a bug, reported as such.
+    val header = safely(document.root.as[Script]).or:
+      panic(m"the script header validated but did not decode")
 
-  // The model, read from a document the schema has already accepted — so `language` is present
-  // with its form as the primary atom, and the repeated fields are what they claim to be. By
-  // hand, as flame and flair read their configuration, rather than by stratiform's derivation,
-  // which capture checking does not yet admit; three fields hardly warrant more.
-  private def decode(tel: Tel): Script =
-    def atoms(node: Tel, keyword: Text): List[Text] =
-      node.fields(keyword).to[List].map(_.primaryAtom).filter(_ != t"")
-
-    val language = tel.field(t"language").or(panic(m"the validated header has no language"))
-    Script(Language(language.primaryAtom, atoms(language, t"flag")), atoms(tel, t"classpath"))
+    Parsed(header, body)
 
 // The header of a script: the TEL document before the `##` line, in Fury's vocabulary (lira's
-// fury.md §12a), conforming to `script.schema.tel`. `language scala` is positional — the atom
-// is the form — with the compiler flags beneath it; `classpath` entries resolve against the
-// script's own directory. The schema is deliberately this small (fever.md §6a); what is absent
-// arrives later as layers, so that each step is a TEL subtype and never a revision.
+// fury.md §12a), conforming to `script.schema.tel`, and decoded from it by stratiform's
+// derivation — `language scala` is positional, the atom being the form, with the compiler flags
+// beneath it, and `classpath` entries resolve against the script's own directory. The schema is
+// deliberately this small (fever.md §6a); what is absent arrives later as layers, so that each
+// step is a TEL subtype and never a revision.
 case class Script(language: Language, classpath: List[Text] = Nil)
 case class Language(form: Text, flag: List[Text] = Nil)

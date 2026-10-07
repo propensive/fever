@@ -113,8 +113,7 @@ object Scripts:
   private def compile
     ( file: Path on Linux, parsed: Script.Parsed, entries: List[Text], out: Path on Linux )
     ( using Stdio, Monitor )
-    ( using Tactic[Compiler.Error], Tactic[Async.Error], Tactic[Io.Error] )
-  :   Boolean =
+  :   Boolean raises Compiler.Error raises Async.Error raises Io.Error =
 
     if out.existent() then out.wipe()
     out.create[Directory](CreateFlag.Parents)

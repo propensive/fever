@@ -66,11 +66,10 @@ def runTests(): Unit =
   java.lang.System.exit(status)
 
 // Counts outcomes for the summary line. A class rather than local `var`s so the event sink,
-// which must be a pure `TestEvent -> Unit`, captures nothing it may not; the counters hold pure
-// data, so they are untracked, as exoskeleton's own `Invocation` holds its.
+// which must be a pure `TestEvent -> Unit`, captures nothing it may not.
 private final class Tally:
-  @scala.caps.unsafe.untrackedCaptures private var passes: Int = 0
-  @scala.caps.unsafe.untrackedCaptures private var failures: Int = 0
+  private var passes: Int = 0
+  private var failures: Int = 0
   def passed: Int = passes
   def failed: Int = failures
   def record(pass: Boolean): Unit = if pass then passes += 1 else failures += 1

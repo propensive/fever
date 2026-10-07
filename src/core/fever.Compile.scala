@@ -120,8 +120,7 @@ object Compile:
   def compile
     ( file: Text, body: Text, flags: List[Text], classpath: LocalClasspath, out: Path on Linux )
     ( using Monitor, System )
-    ( using Tactic[Compiler.Error] )
-  :   CompileProcess =
+  :   CompileProcess raises Compiler.Error =
 
     val options = (baseline + flags).map(Scalac.Option[Scalac.Versions](_))
     Scalac[3.9](options)(classpath)(Map(file -> body), out)

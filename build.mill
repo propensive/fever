@@ -37,20 +37,36 @@ object settings:
   // Empty by default → download `scalaRelease`.
   val scalaHome = sys.env.getOrElse("SOUNDNESS_SCALA_HOME", "")
 
-  // The version fever's OWN library module is released under, AND the version the `launcher` module
-  // resolves it at. Kept as a single value so the released coordinate and the launcher's dependency
-  // coordinate cannot drift apart: burdock externalizes a module only when the exact released jar
-  // bytes are on the launcher's classpath, so a mismatch would silently fall back to inlining.
-  // Bump (and commit) per release; release.sh (in propensive/.github) refuses to release
-  // when this pin disagrees with the tag being released. Snapshots override it through
-  // `publishVersion` (below), never here.
-  val feverVersion = "0.1.0"
+  // This build's version. A release's version is declared once, by its tag: the release
+  // (release.sh in propensive/.github) and a snapshot (snapshot.sh) both name it in
+  // `FEVER_RELEASE_VERSION`. Any other build is the version after the latest release reachable
+  // from HEAD — its patch version plus one, which sorts after that release and before whichever
+  // follows it — or `0.0.1` where no release tag is reachable, as in CI's shallow checkout.
+  // Called from `Task.Input`s, so the environment and the tags are read on every invocation.
+  def version(env: Map[String, String]): String =
+    env.get("FEVER_RELEASE_VERSION").filter(_.nonEmpty).getOrElse(nextVersion)
+
+  def nextVersion: String =
+    val root = mill.api.BuildCtx.workspaceRoot
+
+    val latest: Option[String] =
+      scala.util.Try:
+        os.proc("git", "describe", "--tags", "--abbrev=0", "--match", "[0-9]*.[0-9]*.[0-9]*")
+        . call(cwd = root, stderr = os.Pipe).out.text().trim
+      . toOption
+
+    def numeric(part: String): Boolean = part.nonEmpty && part.forall(_.isDigit)
+
+    latest.collect:
+      case s"$major.$minor.$patch" if Seq(major, minor, patch).forall(numeric) =>
+        s"$major.$minor.${patch.toInt + 1}"
+    . getOrElse("0.0.1")
 
   // The version a Pyrocosm tool reports (`fever --version`), written by its build into the
   // `META-INF/pyrocosm/<name>/version` resource `pyrocosm.Tool` reads: the release version when
-  // `<NAME>_RELEASE_VERSION` drives a release, else `<pinned>-<12 hex of the filtered tree>`,
+  // `<NAME>_RELEASE_VERSION` drives a release, else `<next version>-<12 hex of the filtered tree>`,
   // with `-dirty` when the worktree has changes — exactly as fume and flame version themselves.
-  def buildVersion(env: Map[String, String], name: String, pinned: String): String =
+  def buildVersion(env: Map[String, String], name: String): String =
     env.get(s"${name.toUpperCase}_RELEASE_VERSION").filter(_.nonEmpty).getOrElse:
       val root = mill.api.BuildCtx.workspaceRoot
 
@@ -62,7 +78,7 @@ object settings:
       val dirty: Boolean =
         os.proc("git", "status", "--porcelain").call(cwd = root).out.text().trim.nonEmpty
 
-      s"$pinned-${tree.take(12)}${if dirty then "-dirty" else ""}"
+      s"$nextVersion-${tree.take(12)}${if dirty then "-dirty" else ""}"
 
   val scalaOptions = Seq(
     // The fork's opt-in behaviours, enabled by name, exactly as the Soundness build enables them —
@@ -331,13 +347,13 @@ trait Component(dependencies: PublishModule*) extends Toolchain:
 // `dev.propensive` organization, Apache-2.0 licence, GitHub SCM and developer, plus the empty
 // `-javadoc.jar`.
 trait Publishing extends Toolchain, SonatypeCentralPublishModule:
-  // A `Task.Input` reading `Task.env`, not a plain value: `FEVER_RELEASE_VERSION` is how
-  // `make snapshot` (snapshot.sh in propensive/.github) drives the snapshot version through a Mill
-  // daemon that is already running — the daemon freezes `sys.env` at its own start, while
-  // `Task.env` is the environment of each `./mill` invocation. A release never sets it: the
-  // released version is `settings.feverVersion`, and the release script insists on it.
+  // A `Task.Input` reading `Task.env`, not a plain value: `FEVER_RELEASE_VERSION` is how a
+  // release and `make snapshot` (release.sh and snapshot.sh in propensive/.github) drive the
+  // version through a Mill daemon that is already running — the daemon freezes `sys.env` at its
+  // own start, while `Task.env` is the environment of each `./mill` invocation. Without it, the
+  // version is `settings.nextVersion`. The launcher resolves this module at this same version.
   def publishVersion = Task.Input:
-    Task.env.get("FEVER_RELEASE_VERSION").filter(_.nonEmpty).getOrElse(settings.feverVersion)
+    settings.version(Task.env)
 
   def artifactSuffix = Task("")
 
@@ -358,7 +374,7 @@ trait Publishing extends Toolchain, SonatypeCentralPublishModule:
 // A Pyrocosm tool's published module: its sources, plus the version resource `pyrocosm.Tool`
 // reports through `--version` and `about`.
 trait Pyrocosmic(name: String) extends Component:
-  def buildVersion = Task.Input(settings.buildVersion(Task.env, name, settings.feverVersion))
+  def buildVersion = Task.Input(settings.buildVersion(Task.env, name))
 
   override def resources = Task:
     val file = Task.dest / "META-INF" / "pyrocosm" / name / "version"
@@ -386,7 +402,7 @@ object fever extends Project:
   // must precede this module's assembly.
   object launcher extends Component():
     def mvnDeps = Task:
-      mvn"dev.propensive:fever-core:${settings.feverVersion}"
+      mvn"dev.propensive:fever-core:${core.publishVersion()}"
         +: (settings.soundnessDeps(deps.soundness())
             ++ settings.anthologyDeps(deps.soundness())
             ++ Seq(mvn"dev.propensive:pyrocosm-cli:${deps.pyrocosm()}",

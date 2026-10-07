@@ -47,26 +47,62 @@ import threading.platformThreading
 // performs compilations and other source-code operations, `scalac` but faster, and in time most
 // of an LSP server's work. Everything that knows what a `.scala` file is lives here, never in
 // Fury, which reaches Fever only through the `lira.tool` contract. One Fever is released per
-// Scala version, against that compiler's API. This is the skeleton of ladder step 0; the first
-// edge — `scalac/jvm` through the contract — arrives with step 5.
+// Scala version, against that compiler's API. Its first working feature is scripts (fever.md
+// §6a): a single file whose TEL header precedes its Scala source, run directly through
+// `#!/usr/bin/env fever`.
 val Fever: Tool =
   Tool
     ( t"fever",
       prose = t"Fever is the Scala compiler service for Fury and for editors: a resident daemon " +
         t"that compiles Scala through the lira.tool contract, one release per Scala " +
-        t"version." )
+        t"version, and runs single-file Scala scripts." )
 
+object CompileFailed extends Status(1, t"the script did not compile")
 object UsageError extends Status(2, t"the command line was not understood")
-object Unimplemented extends Status(10, t"this subcommand is not yet implemented")
+object NoScript extends Status(3, t"the script could not be read")
+object InvalidHeader extends Status(4, t"the script's header is not valid")
+object NoEntryPoint extends Status(5, t"the script defines no `main(using Runtime): Unit`")
+object ScriptFailed extends Status(6, t"the script threw an exception")
+object Unimplemented extends Status(7, t"this subcommand is not yet implemented")
 
 object ui:
+  val Run = Subcommand("run", "compile a script, unless it is cached, and run it")
   val Compile = Subcommand("compile", "compile Scala sources once, as scalac would")
   val Lsp = Subcommand("lsp", "run the language server over stdio")
+  val Force = Flag[Unit]("force", false, List('f'), "recompile the script even if it is cached")
+
+// The arguments which are not flags: the script, and after it, the script's own arguments.
+private def operands(arguments: List[Argument]): List[Argument] =
+  arguments.filter(!_().starts(t"-"))
 
 def run(): Unit =
   cli:
     Fever.standard:
+      // `Pathname` resolves a path argument against the INVOKING shell's directory, not the
+      // daemon's, and registers filename completions for it.
+      import workingDirectories.daemonClientWorkingDirectory
+
       arguments match
+        case ui.Run() :: rest =>
+          // Read outside `execute`, where completion mode registers it.
+          val force = ui.Force().present
+
+          operands(rest) match
+            case Pathname(file) :: scriptArguments =>
+              script(file, scriptArguments.map(_()), force)
+
+            case _ =>
+              usage(t"fever run [--force] <file> [arguments...]")
+
+        // The shebang form: `#!/usr/bin/env fever` runs `fever <path> [arguments...]`, and a path
+        // as the shell resolves it — `./hello`, `scripts/hello`, `/usr/local/bin/hello` — always
+        // contains a `/`. A bare word never does, so it is always a subcommand, and a script in
+        // the working directory named like one is reached as `./name` or through `run`.
+        case (argument @ Argument(head)) :: scriptArguments if head.contains(t"/") =>
+          argument match
+            case Pathname(file) => script(file, scriptArguments.map(_()), false)
+            case _              => usage(t"fever <file> [arguments...]")
+
         case ui.Compile() :: _ =>
           execute:
             given Stdio = summon[Invocation].stdio
@@ -83,10 +119,31 @@ def run(): Unit =
           execute:
             given Stdio = summon[Invocation].stdio
             Out.println(t"Usage: fever <subcommand>")
+            Out.println(t"       fever <file> [arguments...]")
             Out.println(t"")
+            Out.println(t"  run        compile a script, unless it is cached, and run it")
             Out.println(t"  compile    compile Scala sources once, as scalac would")
             Out.println(t"  lsp        run the language server over stdio")
             Out.println(t"  about      show this tool's name, version and daemon")
             Out.println(t"  install    install shell tab-completions and the manpage")
             Out.println(t"  quit       stop the background daemon")
             UsageError
+
+// Runs a script with the invocation's streams, environment and directory — which the daemon's
+// own are not — projected once, here, from the `Invocation`.
+private def script(file: Path on Local, arguments: List[Text], force: Boolean)
+  ( using Cli, Monitor )
+:   Execution =
+
+  execute:
+    val invocation = summon[Invocation]
+    given Stdio = invocation.stdio
+    given Environment = invocation.environment
+    given WorkingDirectory = invocation.workingDirectory
+    Scripts.run(file.encode, arguments, force)
+
+private def usage(synopsis: Text)(using Cli): Execution =
+  execute:
+    given Stdio = summon[Invocation].stdio
+    Err.println(t"fever: usage: $synopsis")
+    UsageError

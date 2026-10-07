@@ -34,7 +34,7 @@ fever.jar: assembly
 # Package the repackaged JAR as a native executable for this machine with the pinned `xek` builder
 # (fetched into dist/xek and verified against etc/xek.tsv).
 fever: fever.jar xek-fetch
-	dist/xek fever.jar fever
+	dist/xek build fever.jar fever
 
 # Fetch the pinned `xek` builder into dist/xek.
 xek-fetch:

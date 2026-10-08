@@ -31,8 +31,8 @@ object settings:
   // is evaluated, and neither a fresh daemon nor `--no-daemon` propagates the variable. To switch
   // toolchains, edit the defaults here. The `SOUNDNESS_SCALA_RELEASE", "…"` literal must stay on
   // one line: the shared `scala-ci.yml` (propensive/.github) `sed`s it to key the toolchain cache.
-  val scalaVersion = sys.env.getOrElse("SOUNDNESS_SCALA_VERSION", "3.9.1-dev-p17")
-  val scalaRelease = sys.env.getOrElse("SOUNDNESS_SCALA_RELEASE", "3.9.1-dev-p17")
+  val scalaVersion = sys.env.getOrElse("SOUNDNESS_SCALA_VERSION", "3.9.1-dev-p18")
+  val scalaRelease = sys.env.getOrElse("SOUNDNESS_SCALA_RELEASE", "3.9.1-dev-p18")
 
   // Empty by default → download `scalaRelease`.
   val scalaHome = sys.env.getOrElse("SOUNDNESS_SCALA_HOME", "")
@@ -115,12 +115,12 @@ object settings:
     "-language:experimental.saferExceptions",
     "-language:experimental.strictEqualityPatternMatching",
     "-language:experimental.subCases",
-    "-language:experimental.multiSpreads",
-    // Capture- and separation-checked, as fume and flame are: fever's sources were written for
-    // these flags from the start (each subsumes the corresponding per-file language import).
-    "-Ycc-new",
-    "-language:experimental.captureChecking",
-    "-language:experimental.separationChecking")
+    "-language:experimental.multiSpreads")
+    // NOT capture- or separation-checked, unlike fume and flame: stratiform's derived TEL decoders
+    // do not typecheck under `-Ycc-new` (Soundness #2197: a scalar decoder's tactic cannot flow
+    // into the derivation's pure field-decoder slots), and fever reads its script headers through
+    // exactly that derivation. Restore `-Ycc-new`, `-language:experimental.captureChecking` and
+    // `-language:experimental.separationChecking` once the derivation is capture-clean.
 
   // The tool's sources are written for the proscenium predef (the Soundness house predef), so this
   // standalone build replicates `-Yno-predef -Yimports:…`, exactly as tel, fume and flame do.
@@ -162,6 +162,18 @@ object settings:
   def anthologyDeps(soundness: String) = Seq(
     mvn"dev.propensive:anthology-core:$soundness",           // Format, Universe, Edge, Toolchain
     mvn"dev.propensive:anthology-scala:$soundness")          // Scalac and its driver
+
+  // Anthology drives `dotty.tools.dotc` in-process and declares the compiler compile-time only, so
+  // the JVM that runs Fever must carry it: the fork compiler, at the version this build uses,
+  // resolved from the `toolchain` repository below. One Fever per Scala version (fever.md §2) is
+  // this dependency.
+  def compilerDeps = Seq(
+    mvn"org.scala-lang:scala3-compiler_3:${settings.scalaVersion}",
+    mvn"org.scala-lang:scala3-tasty-inspector_3:${settings.scalaVersion}")  // a script's entry point
+
+  def testDeps(soundness: String) = Seq(
+    mvn"dev.propensive:probably-cli:$soundness",
+    mvn"dev.propensive:probably-events:$soundness")
 
 // Exposes the fork compiler's jars (from a local build via `settings.scalaHome`, or downloaded from
 // the `settings.scalaRelease` GitHub release) as a Maven-layout repository, generated on demand: the
@@ -275,6 +287,17 @@ object toolchain extends Module:
 trait Toolchain extends ScalaModule:
   override def repositories: T[Seq[String]] = Task:
     super.repositories() :+ s"file://${toolchain.repo().path}"
+
+  // The pinned libraries were each built with some release of the fork and name its artifacts at
+  // that version in their POMs, while the toolchain repository serves the fork's artifacts at
+  // `scalaVersion` alone; so every `org.scala-lang` dependency is forced to that coordinate,
+  // exactly as the Soundness build does for its own plugins. The fork stays TASTy-compatible
+  // across its patch releases, which is what every such pin assumes.
+  override def mapDependencies: Task[coursier.Dependency => coursier.Dependency] = Task.Anon:
+    (dependency: coursier.Dependency) =>
+      if dependency.module.organization.value == "org.scala-lang"
+      then dependency.withVersionConstraint(coursier.version.VersionConstraint(settings.scalaVersion))
+      else dependency
 
   override def scalaCompilerClasspath: T[Seq[PathRef]] = Task:
     // The fork-built jars come from the repository view because Zinc locates the standard library
@@ -391,8 +414,17 @@ object fever extends Project:
     def mvnDeps = Task:
       settings.soundnessDeps(deps.soundness())
         ++ settings.anthologyDeps(deps.soundness())
+        ++ settings.compilerDeps
         ++ Seq(mvn"dev.propensive:pyrocosm-cli:${deps.pyrocosm()}",
+               mvn"dev.propensive:pyrocosm-script:${deps.pyrocosm()}",  // a script's Runtime
                mvn"dev.propensive:lira-tool:${deps.lira()}")
+
+  // Fever's own suite, assembled into one jar that fume runs (`make test`, through
+  // .pyrocosm/fume/config.tel) or plain `java` does (`make test-plain`, `fever.runTests`).
+  object test extends Component(core):
+    def mvnDeps = Task(settings.testDeps(deps.soundness()))
+    def scalacPluginMvnDeps = Task(Seq(mvn"dev.propensive:beneficence-plugin:${deps.soundness()}"))
+    def finalMainClass = "fever.runTests"
 
   // The invocation point, ALONE in its own module (`src/launcher/fever_launcher.scala` — just the
   // `@main def fever = externalize(run())`). It depends on `core` NOT as a Mill `moduleDep` but as
@@ -405,7 +437,9 @@ object fever extends Project:
       mvn"dev.propensive:fever-core:${core.publishVersion()}"
         +: (settings.soundnessDeps(deps.soundness())
             ++ settings.anthologyDeps(deps.soundness())
+            ++ settings.compilerDeps
             ++ Seq(mvn"dev.propensive:pyrocosm-cli:${deps.pyrocosm()}",
+                   mvn"dev.propensive:pyrocosm-script:${deps.pyrocosm()}",
                    mvn"dev.propensive:lira-tool:${deps.lira()}"))
 
     def finalMainClass = "fever.fever"

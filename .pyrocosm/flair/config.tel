@@ -19,8 +19,8 @@ profile default
   source src/**/*.scala
 
   # The `-language` features the build compiles with, so flair parses the sources exactly as the
-  # build does. Kept in step with `settings.scalaOptions` in build.mill — including capture and
-  # separation checking, which lira compiles with and tel does not.
+  # build does. Kept in step with `settings.scalaOptions` in build.mill — without capture and
+  # separation checking, which build.mill explains.
   language implicitConversions
   language experimental.modularity
   language experimental.dependent
@@ -32,8 +32,6 @@ profile default
   language experimental.strictEqualityPatternMatching
   language experimental.subCases
   language experimental.multiSpreads
-  language experimental.captureChecking
-  language experimental.separationChecking
 
   style consequent
     header etc/header.txt

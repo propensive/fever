@@ -1,0 +1,38 @@
+tel 1.0
+
+# The header of a Fever script (lira's fury.md §12a and fever.md §6a): the TEL document before
+# the `##` line that separates it from the Scala source. The vocabulary is Fury's, so that the
+# same file runs under `fury` unchanged; this base is deliberately small, and `include` (lira
+# coordinates), `require`, `artifact` and JVM options arrive as layers, each a TEL subtype step
+# rather than a revision. Unknown keys are refused: everything that reaches the compiler must be
+# declared and hashable (builds.md §3.1).
+
+name fever-script
+
+scalar Form
+  description
+      The source form of the body. Fever compiles `scala` alone; another form is an error naming
+      it.
+  pattern scala
+
+scalar ScalacFlag
+  description
+      One scalac command-line flag, verbatim, e.g. -deprecation or -Wunused:imports.
+  pattern -.*
+
+scalar ClasspathEntry
+  description
+      A jar or class directory for the body's compile and run classpath, resolved against the
+      script's own directory unless absolute.
+  validate string
+
+record Language
+  description
+      The body's source form, with the compiler options for it beneath.
+
+  field form Form
+  field flag ScalacFlag optional repeatable
+
+document
+  field language Language
+  field classpath ClasspathEntry optional repeatable

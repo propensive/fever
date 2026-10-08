@@ -75,7 +75,19 @@ snapshot:
 snapshot-prune:
 	./etc/shared snapshot-prune.sh fever $(DAYS)
 
+# Run the suite with fume (the release pinned in etc/tools; `make tools` installs it), which
+# discovers the suites from the test assembly named in .pyrocosm/fume/config.tel. TESTS restricts
+# the run, as `make test TESTS='Script*'`.
+test:
+	./mill fever.test.assembly
+	fume run -c out/fever/test/assembly.dest/out.jar $(TESTS)
+
+# The same suite without fume, through the plain-`java` entry point.
+test-plain:
+	./mill fever.test.assembly
+	java -cp out/fever/test/assembly.dest/out.jar fever.runTests
+
 dev:
 	./mill -w fever.core.compile
 
-.PHONY: publishLocal assembly release xek-fetch install sync-deps check tools snapshot snapshot-prune dev
+.PHONY: publishLocal assembly release xek-fetch install sync-deps check tools snapshot snapshot-prune test test-plain dev

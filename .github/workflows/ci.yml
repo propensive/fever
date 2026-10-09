@@ -19,3 +19,7 @@ jobs:
       # ivy repository before assembly.
       publish_local: fever.__
       assembly:      fever.launcher.assembly
+      # The suite, assembled and run through its plain-`java` entry point (`fever.runTests`,
+      # which exits with the suite's status) — what `make test-plain` does locally.
+      test_assembly: fever.test.assembly
+      test_main:     fever.runTests

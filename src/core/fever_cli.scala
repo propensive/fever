@@ -41,7 +41,7 @@ import executives.completionsExecutive
 import interpreters.posixInterpreter
 import pyrocosm.Tool
 import systems.javaBaseSystem
-import threading.platformThreading
+import threads.platformThreads
 
 // Fever as a Pyrocosm tool (fever.md): the Scala compiler service — a resident daemon that
 // performs compilations and other source-code operations, `scalac` but faster, and in time most

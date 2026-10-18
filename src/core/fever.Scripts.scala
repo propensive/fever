@@ -42,6 +42,10 @@ import filesystemOptions.dereferenceSymlinks
 import filesystemTraversal.preOrderTraversal
 import pathInterfaces.pathOnLinux
 import pyrocosm.Runtime  // not `java.lang`'s, which the root import would otherwise supply
+import pyrocosm.{Block, TelSyntax, TerminalRenderer, Tone}
+import textMetrics.uniformMetric
+import tableStyles.thickTableStyle
+import palettes.solarizedDarkGaugePalette
 import systems.javaBaseSystem
 import textSanitizers.skipSanitizer
 
@@ -67,7 +71,7 @@ object Scripts:
         NoScript
 
       case error: Script.Error =>
-        report(path, error)
+        report(path, safely(path.as[Path on Linux].read[Text]), error)
         InvalidHeader
 
       case error: Compiler.Error =>
@@ -96,23 +100,39 @@ object Scripts:
         if cached || compile(file, parsed, entries, out) then launch(out, entries, arguments)
         else CompileFailed
 
-  // A header's problems, each on its own line as a compiler would report them, so that an
-  // editor can jump to each.
-  private def report(path: Text, error: Script.Error)(using Stdio): Unit = error.reason match
-    case Script.Error.Reason.Invalid(rejections) =>
-      rejections.each: rejection =>
-        val line: Int = rejection.span.startLine.let(_.n1).or(1)
-        val message: Text = rejection.message
-        val pointer: Text = rejection.pointer
-        val report: Text = t"$path:$line: error: $message (at $pointer)"
-        Err.println(report)
+  // A header's problems, each a diagnostic: where in the script, what, and the lines of the
+  // header around it, highlighted as TEL, with the place marked; the keyword path the
+  // rejection names follows, since a validator's rejection says nothing else about its field.
+  private def report(path: Text, source: Optional[Text], error: Script.Error)
+    ( using Stdio, Environment )
+  :   Unit =
 
-    case _ =>
-      Err.println(t"fever: $path: ${error.message.text}")
+    error.reason match
+      case Script.Error.Reason.Invalid(rejections) =>
+        val lines: List[Block.Line] = source.lay(Nil)(TelSyntax.lines(_))
+
+        val diagnostics: List[Block] =
+          rejections.map: rejection =>
+            val span: Span = rejection.span
+            val location: Block.Location = Block.Location.of(path, span)
+            val message: List[Block] = List(Block.paragraph(rejection.message))
+            val detail: List[Block] = List(Block.paragraph(t"at ${rejection.pointer}"))
+
+            val excerpt: List[Block] =
+              if lines.nil then Nil else
+                Block.Note.of(span, Block.Note.Style.Erroneous).lay(Nil): (note: Block.Note) =>
+                  List(Block.Code.excerpt(pyrocosm.Language.Tel, lines, List(note)))
+
+            Block.Diagnostic(Tone.Failure, location, message, excerpt, detail)
+
+        TerminalRenderer().blocks(diagnostics, Compile.columns).each { (line: Teletype) => Err.println(line) }
+
+      case _ =>
+        Err.println(t"fever: $path: ${error.message.text}")
 
   private def compile
     ( file: Path on Linux, parsed: Script.Parsed, entries: List[Text], out: Path on Linux )
-    ( using Stdio, Monitor )
+    ( using Stdio, Monitor, Environment )
   :   Boolean raises Compiler.Error raises Async.Error raises Io.Error =
 
     if out.existent() then out.wipe()
@@ -123,7 +143,8 @@ object Scripts:
     val process = Compile.compile(file.encode, parsed.body, flags, classpath, out)
     val result = process.complete()
 
-    process.notices.each: notice => Err.println(Compile.render(notice, file.encode))
+    val lines: List[Block.Line] = if process.notices.nil then Nil else Compile.lines(parsed.body)
+    process.notices.each: notice => Compile.report(notice, file.encode, lines, Compile.columns)
 
     result match
       case CompileResult.Success =>

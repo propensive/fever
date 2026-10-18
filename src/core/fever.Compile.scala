@@ -40,6 +40,11 @@ import logging.silentLogging
 import probates.cancelProbate
 import providers.soundnessProvider
 import systems.javaBaseSystem
+import textMetrics.uniformMetric
+import tableStyles.thickTableStyle
+import palettes.solarizedDarkGaugePalette
+
+import pyrocosm.{Block, Notices, TerminalRenderer}
 
 // Compiling a script's body: a cold compile (fever.md §1) through anthology, against the
 // classpath Fever itself runs with — the fork's standard library, Soundness, and a script's
@@ -125,9 +130,23 @@ object Compile:
     val options = (baseline + flags).map(Scalac.Option[Scalac.Versions](_))
     Scalac[3.9](options)(classpath)(Map(file -> body), out)
 
-  // A diagnostic as scalac prints one, `file:line:column: severity: message`, which the body's
-  // preserved line numbering makes point into the script itself. The compiler names the virtual
-  // source by its last segment alone, so the script's path is supplied.
+  // The width a report is laid out at: the terminal's columns, within reason, or a page's.
+  def columns(using Environment): Int = safely(Environment.columns[Text].s.toInt).lay(100)(_.min(160))
+
+  // The script's lines, highlighted once for the excerpts of every notice about it.
+  def lines(body: Text): List[Block.Line] = Notices.lines(body)
+
+  // A notice reported on the client's stderr as Pyrocosm's diagnostic: the place and the
+  // severity, the message with its types and code highlighted, and the lines of the script
+  // around it, numbered as the script numbers them (the body keeps the file's line numbering),
+  // with the place marked. The compiler names the virtual source by its last segment alone, so
+  // the script's path is supplied.
+  def report(notice: Notice, file: Text, lines: List[Block.Line], width: Int)(using Stdio): Unit =
+    val diagnostic: Block = Notices.diagnostic(notice.copy(file = file), lines)
+    TerminalRenderer().blocks(List(diagnostic), width).each { (line: Teletype) => Err.println(line) }
+
+  // A diagnostic as scalac prints one, `file:line:column: severity: message`, the one-line form
+  // an editor parses.
   def render(notice: Notice, file: Text): Text =
     val position: Text = notice.span.lay(t""): span =>
       val line = span.startLine.let(_.n1).or(0)

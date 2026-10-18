@@ -75,6 +75,14 @@ object Script:
   case class Error(reason: Error.Reason)(using Diagnostics)
   extends fulminate.Error(m"the script header is invalid: $reason")
 
+  // `resident` is a §20 flag — keyword presence alone — which a Scala `Boolean` is not: the
+  // derivation's own decoder reads an explicit `true`/`false` atom. This Flag-natured one reads
+  // presence instead, and outranks stratiform's only here, where the header is decoded: the
+  // product decoder hands it the `resident` compound when the keyword is there, and takes the
+  // field's default when it is not.
+  given flag: Tactic[Tel.Error] => (Boolean is Tel.Decodable) =
+    Tel.Decodable(() => Morphology.Bool, Tel.Nature.Flag): tel => !tel.keyword.nil
+
   // A parsed script: its header, and the source body. The body keeps the file's line numbering:
   // the header's lines are replaced by blank ones, so that every position the compiler reports
   // is already a position in the script, with no remapping.
@@ -119,5 +127,8 @@ object Script:
 // beneath it, and `classpath` entries resolve against the script's own directory. The schema is
 // deliberately this small (fever.md §6a); what is absent arrives later as layers, so that each
 // step is a TEL subtype and never a revision.
-case class Script(language: Language, classpath: List[Text] = Nil)
+//
+// `resident` is the schema's one flag (`Script.flag` reads its presence): the script stays
+// loaded in the daemon between invocations (Residents).
+case class Script(language: Language, classpath: List[Text] = Nil, resident: Boolean = false)
 case class Language(form: Text, flag: List[Text] = Nil)

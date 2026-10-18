@@ -104,6 +104,80 @@ def main(using Runtime): Unit =
 
       . assert(_ == List(3))
 
+      test(m"`resident` is a flag: its presence alone marks the script"):
+        Script.parse(t"language scala\nresident\n##\n").header
+
+      . assert(_ == Script(Language(t"scala"), Nil, resident = true))
+
+      test(m"a script without `resident` is not resident"):
+        Script.parse(hello).header.resident
+
+      . assert(_ == false)
+
+    suite(m"Residents"):
+      // A program which only counts, standing in for loaded classes.
+      class Counting() extends Launch.Program:
+        var unloaded: Int = 0
+        def invoke(runtime: pyrocosm.Runtime)(using Stdio): Unit = ()
+        def unload(): Unit = unloaded += 1
+
+      val stamps = List((t"/lib/extras.jar", 1L))
+
+      def resident(program: Launch.Program, key: Text = t"k1", since: Long = 0L) =
+        Residents.Resident(t"/tmp/hello", key, stamps, program, since)
+
+      test(m"a path nobody has admitted is not resident"):
+        Residents(1000L).lookup(t"/tmp/hello", t"k1", stamps)
+
+      . assert(_ == Unset)
+
+      test(m"an admitted resident is found by its path, key and classpath"):
+        val registry = Residents(1000L)
+        val admitted = registry.admit(resident(Counting()))
+        registry.lookup(t"/tmp/hello", t"k1", stamps) == admitted
+
+      . assert(_ == true)
+
+      test(m"a changed script evicts its resident"):
+        val registry = Residents(1000L)
+        val program = Counting()
+        registry.admit(resident(program))
+        (registry.lookup(t"/tmp/hello", t"k2", stamps), program.unloaded, registry.all.size)
+
+      . assert(_ == (Unset, 1, 0))
+
+      test(m"a changed classpath entry evicts its resident"):
+        val registry = Residents(1000L)
+        val program = Counting()
+        registry.admit(resident(program))
+        (registry.lookup(t"/tmp/hello", t"k1", List((t"/lib/extras.jar", 2L))), program.unloaded)
+
+      . assert(_ == (Unset, 1))
+
+      test(m"admitting a path again unloads what it had"):
+        val registry = Residents(1000L)
+        val first = Counting()
+        registry.admit(resident(first))
+        registry.admit(resident(Counting(), key = t"k2"))
+        (first.unloaded, registry.all.size)
+
+      . assert(_ == (1, 1))
+
+      test(m"stopping unloads, once"):
+        val registry = Residents(1000L)
+        val program = Counting()
+        registry.admit(resident(program))
+        (registry.stop(t"/tmp/hello"), registry.stop(t"/tmp/hello"), program.unloaded)
+
+      . assert(_ == (true, false, 1))
+
+      test(m"a sweep unloads only what has idled past the limit"):
+        val registry = Residents(1000L)
+        registry.admit(resident(Counting(), since = 0L))
+        (registry.sweep(500L), registry.sweep(2000L), registry.all.size)
+
+      . assert(_ == (0, 1, 0))
+
     suite(m"Diagnostics"):
       test(m"a notice renders as scalac prints one"):
         val line = Ordinal.zerary(11)

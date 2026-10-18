@@ -49,7 +49,8 @@ import threads.platformThreads
 // Fury, which reaches Fever only through the `lira.tool` contract. One Fever is released per
 // Scala version, against that compiler's API. Its first working feature is scripts (fever.md
 // §6a): a single file whose TEL header precedes its Scala source, run directly through
-// `#!/usr/bin/env fever`.
+// `#!/usr/bin/env fever`. A script whose header says `resident` stays loaded in the daemon
+// between runs (Residents); `ps` and `stop` show and unload them.
 val Fever: Tool =
   Tool
     ( t"fever",
@@ -64,12 +65,16 @@ object InvalidHeader extends Status(4, t"the script's header is not valid")
 object NoEntryPoint extends Status(5, t"the script defines no `main(using Runtime): Unit`")
 object ScriptFailed extends Status(6, t"the script threw an exception")
 object Unimplemented extends Status(7, t"this subcommand is not yet implemented")
+object NotResident extends Status(8, t"the script is not resident")
 
 object ui:
   val Run = Subcommand("run", "compile a script, unless it is cached, and run it")
   val Compile = Subcommand("compile", "compile Scala sources once, as scalac would")
   val Lsp = Subcommand("lsp", "run the language server over stdio")
+  val Ps = Subcommand("ps", "list the resident scripts the daemon has loaded")
+  val Stop = Subcommand("stop", "unload a resident script, or all of them")
   val Force = Flag[Unit]("force", false, List('f'), "recompile the script even if it is cached")
+  val All = Flag[Unit]("all", false, List('a'), "unload every resident script")
 
 // The arguments which are not flags: the script, and after it, the script's own arguments.
 private def operands(arguments: List[Argument]): List[Argument] =
@@ -103,6 +108,33 @@ def run(): Unit =
             case Pathname(file) => script(file, scriptArguments.map(_()), false)
             case _              => usage(t"fever <file> [arguments...]")
 
+        case ui.Ps() :: _ =>
+          execute:
+            given Stdio = summon[Invocation].stdio
+            given Environment = summon[Invocation].environment
+            Scripts.list()
+            Exit.Ok
+
+        // The script's classes and state are unloaded from the daemon; the next invocation
+        // compiles nothing (the classes are cached) but loads afresh.
+        case ui.Stop() :: rest =>
+          val all = ui.All().present
+
+          operands(rest) match
+            case Pathname(file) :: _ =>
+              execute:
+                given Stdio = summon[Invocation].stdio
+                if Scripts.stop(file.encode) then Exit.Ok else NotResident
+
+            case _ if all =>
+              execute:
+                given Stdio = summon[Invocation].stdio
+                Scripts.stopAll()
+                Exit.Ok
+
+            case _ =>
+              usage(t"fever stop <file> | fever stop --all")
+
         case ui.Compile() :: _ =>
           execute:
             given Stdio = summon[Invocation].stdio
@@ -124,6 +156,8 @@ def run(): Unit =
             Out.println(t"  run        compile a script, unless it is cached, and run it")
             Out.println(t"  compile    compile Scala sources once, as scalac would")
             Out.println(t"  lsp        run the language server over stdio")
+            Out.println(t"  ps         list the resident scripts the daemon has loaded")
+            Out.println(t"  stop       unload a resident script, or all of them")
             Out.println(t"  about      show this tool's name, version and daemon")
             Out.println(t"  install    install shell tab-completions and the manpage")
             Out.println(t"  quit       stop the background daemon")
@@ -140,7 +174,13 @@ private def script(file: Path on Local, arguments: List[Text], force: Boolean)
     given Stdio = invocation.stdio
     given Environment = invocation.environment
     given WorkingDirectory = invocation.workingDirectory
-    Scripts.run(file.encode, arguments, force)
+
+    // Every failure `Scripts.run` anticipates is a status; anything else is a bug in Fever, and
+    // is reported with its trace rather than vanishing into the daemon.
+    try Scripts.run(file.encode, arguments, force) catch case error: Throwable =>
+      Err.println(t"fever: $file: ${Text(error.toString)}")
+      error.printStackTrace(invocation.stdio.err)
+      ScriptFailed
 
 private def usage(synopsis: Text)(using Cli): Execution =
   execute:

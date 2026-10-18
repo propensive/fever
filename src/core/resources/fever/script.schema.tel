@@ -6,6 +6,10 @@ tel 1.0
 # coordinates), `require`, `artifact` and JVM options arrive as layers, each a TEL subtype step
 # rather than a revision. Unknown keys are refused: everything that reaches the compiler must be
 # declared and hashable (builds.md §3.1).
+#
+# `resident` is a run option, not a language option, so it stands beside `language` rather than
+# beneath it: the script's classes and top-level state stay loaded in the daemon between
+# invocations (see Residents), and a change to the file or its classpath unloads them.
 
 name fever-script
 
@@ -36,3 +40,4 @@ record Language
 document
   field language Language
   field classpath ClasspathEntry optional repeatable
+  field resident Flag optional

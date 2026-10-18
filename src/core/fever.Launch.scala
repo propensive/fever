@@ -115,14 +115,33 @@ object Launch:
       mismatch.lay(abort(Launch.Error(Error.Reason.NoMain))): signature =>
         abort(Launch.Error(Error.Reason.WrongSignature(signature)))
 
-  // Calls `main` in-process, as fume runs a suite: the compiled classes and the header's entries
-  // in a classloader whose parent is Fever's own, so that a script shares Fever's Soundness and —
-  // essentially — its `pyrocosm.Runtime` class; and with the JVM's streams diverted to the
-  // client's for the duration, so that output which bypasses `Runtime` still reaches the user.
-  def run(out: Path on Linux, entries: List[Text], entryPoint: Text, runtime: Runtime)
-    ( using Stdio )
-  :   Unit =
+  // What a loaded script can do: run `main` with a `Runtime`, and be let go of. `Loaded` is the
+  // real one; Residents holds its residents through this, so that the registry is testable
+  // without compiling anything.
+  trait Program:
+    def invoke(runtime: Runtime)(using Stdio): Unit
+    def unload(): Unit
 
+  // A script loaded and ready to run: the compiled classes and the header's entries in a
+  // classloader whose parent is Fever's own, so that a script shares Fever's Soundness and —
+  // essentially — its `pyrocosm.Runtime` class; the module instance holding `main`; and `main`
+  // itself. Loading once and invoking many times is what a resident script is (Residents): the
+  // module's top-level state lives as long as the loader does.
+  class Loaded(val loader: Classloader, instance: Any, method: java.lang.reflect.Method)
+  extends Program:
+    // Calls `main` in-process, as fume runs a suite, with the JVM's streams diverted to the
+    // client's for the duration, so that output which bypasses `Runtime` still reaches the user.
+    def invoke(runtime: Runtime)(using Stdio): Unit =
+      Stdio.divert(summon[Stdio]):
+        loader.use(method.invoke(instance, runtime))
+
+    // Closing the loader releases its jars' file handles; the classes themselves are collected
+    // once nothing refers to them.
+    def unload(): Unit = loader.java match
+      case loader: java.net.URLClassLoader => loader.close()
+      case _                               => ()
+
+  def load(out: Path on Linux, entries: List[Text], entryPoint: Text): Optional[Loaded] =
     val extra: List[Classpath.Entry.Directory | Classpath.Entry.Jar] = entries.map: entry =>
       if entry.ends(t".jar") then Classpath.Entry.Jar(entry) else Classpath.Entry.Directory(entry)
 
@@ -133,6 +152,10 @@ object Launch:
     loader.on(entryPoint).let: moduleClass =>
       val instance: Any = moduleClass.getField("MODULE$").nn.get(null).nn
       val method = moduleClass.getMethod("main", classOf[Runtime]).nn
+      Loaded(loader, instance, method)
 
-      Stdio.divert(summon[Stdio]):
-        loader.use(method.invoke(instance, runtime))
+  def run(out: Path on Linux, entries: List[Text], entryPoint: Text, runtime: Runtime)
+    ( using Stdio )
+  :   Unit =
+
+    load(out, entries, entryPoint).let(_.invoke(runtime))

@@ -455,7 +455,9 @@ object fever extends Project:
         ++ settings.anthologyDeps(deps.soundness())
         ++ settings.compilerDeps
         ++ Seq(mvn"dev.propensive:pyrocosm-cli:${deps.pyrocosm()}",
-               mvn"dev.propensive:pyrocosm-script:${deps.pyrocosm()}",  // a script's Runtime
+               mvn"dev.propensive:pyrocosm-script:${deps.pyrocosm()}",    // a script's Runtime
+               mvn"dev.propensive:pyrocosm-terminal:${deps.pyrocosm()}",  // diagnostics, rendered
+               mvn"dev.propensive:pyrocosm-compiler:${deps.pyrocosm()}",  // a notice as a diagnostic
                mvn"dev.propensive:lira-tool:${deps.lira()}")
 
   // Fever's own suite, assembled into one jar that fume runs (`make test`, through
@@ -479,6 +481,8 @@ object fever extends Project:
             ++ settings.compilerDeps
             ++ Seq(mvn"dev.propensive:pyrocosm-cli:${deps.pyrocosm()}",
                    mvn"dev.propensive:pyrocosm-script:${deps.pyrocosm()}",
+                   mvn"dev.propensive:pyrocosm-terminal:${deps.pyrocosm()}",
+                   mvn"dev.propensive:pyrocosm-compiler:${deps.pyrocosm()}",
                    mvn"dev.propensive:lira-tool:${deps.lira()}"))
 
     def finalMainClass = "fever.fever"

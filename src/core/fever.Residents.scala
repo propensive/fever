@@ -83,8 +83,10 @@ object Residents:
       val since:   Long ):
 
     private val lock: Mutex = Mutex()
-    @volatile private var last0: Long = since
-    @volatile private var runs0: Int = 0
+    // Untracked, as the test runner's tally is: a `Mutable` class would itself be a capability
+    // the registry's map could not hold.
+    @volatile @scala.caps.unsafe.untrackedCaptures private var last0: Long = since
+    @volatile @scala.caps.unsafe.untrackedCaptures private var runs0: Int = 0
 
     def last: Long = last0
     def runs: Int = runs0

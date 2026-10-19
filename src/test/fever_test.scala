@@ -117,7 +117,7 @@ def main(using Runtime): Unit =
     suite(m"Residents"):
       // A program which only counts, standing in for loaded classes.
       class Counting() extends Launch.Program:
-        var unloaded: Int = 0
+        @scala.caps.unsafe.untrackedCaptures var unloaded: Int = 0
         def invoke(runtime: pyrocosm.Runtime)(using Stdio): Unit = ()
         def unload(): Unit = unloaded += 1
 

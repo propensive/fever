@@ -35,6 +35,10 @@ package fever
 import soundness.*
 
 // The invocation point, alone in its own build module; see build.mill for why the `launcher`
-// depends on `fever-core` as a published coordinate. The dispatch is `fever.run`.
-@main
-def fever(): Unit = externalize(run())
+// depends on `fever-core` as a published coordinate. The dispatch is `fever.Client.run`.
+//
+// An object with a plain `main` rather than a `@main` method: `Client` declares its use of the
+// global `threads` and `Watcher`, so whatever names it must declare the same, and a top-level
+// definition can carry no `uses` clause. The entry point is still the class `fever.fever`.
+object fever uses parasite.threads, surveillance.Watcher:
+  def main(args: Array[String]): Unit = externalize(_root_.fever.Client.run())

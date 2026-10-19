@@ -135,12 +135,15 @@ object settings:
     "-language:experimental.saferExceptions",
     "-language:experimental.strictEqualityPatternMatching",
     "-language:experimental.subCases",
-    "-language:experimental.multiSpreads")
-    // NOT capture- or separation-checked, unlike fume and flame: stratiform's derived TEL decoders
-    // do not typecheck under `-Ycc-new` (Soundness #2197: a scalar decoder's tactic cannot flow
-    // into the derivation's pure field-decoder slots), and fever reads its script headers through
-    // exactly that derivation. Restore `-Ycc-new`, `-language:experimental.captureChecking` and
-    // `-language:experimental.separationChecking` once the derivation is capture-clean.
+    "-language:experimental.multiSpreads",
+    // Capture checking AND separation checking, matching Soundness's `settings.sep` (its
+    // strictest rollout tier), as fume and flame are built: the language flags are equivalent to
+    // per-file `import language.experimental.captureChecking`/`.separationChecking`, so no source
+    // edits are needed. The script header's derived TEL decoder is capture-clean since Soundness
+    // #2226 (in 0.72.0), which is what kept these off before (#9).
+    "-Ycc-new",
+    "-language:experimental.captureChecking",
+    "-language:experimental.separationChecking")
 
   // The tool's sources are written for the proscenium predef (the Soundness house predef), so this
   // standalone build replicates `-Yno-predef -Yimports:…`, exactly as tel, fume and flame do.

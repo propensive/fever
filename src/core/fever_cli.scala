@@ -80,88 +80,58 @@ object ui:
 private def operands(arguments: List[Argument]): List[Argument] =
   arguments.filter(!_().starts(t"-"))
 
-def run(): Unit =
-  cli:
-    Fever.standard:
-      // `Pathname` resolves a path argument against the INVOKING shell's directory, not the
-      // daemon's, and registers filename completions for it.
-      import workingDirectories.daemonClientWorkingDirectory
+// In an object, for its `uses` clause: `cli` supervises under the global `threads`, and watches
+// its state files with the default `Watcher`, and both are capabilities a definition at the top
+// level may not reach undeclared. The launcher's `fever.fever` calls `Client.run()`.
+object Client uses parasite.threads, surveillance.Watcher:
+  // The executive supervises under the global `threads`, which its type records, while `cli`
+  // takes a pure one; `Client` declares that use itself, so the capture is vouched away here.
+  given executive: exoskeleton.executives.CompletionsExecutive =
+    scala.caps.unsafe.unsafeAssumePure(executives.completionsExecutive)
 
-      arguments match
-        case ui.Run() :: rest =>
-          // Read outside `execute`, where completion mode registers it.
-          val force = ui.Force().present
+  def run(): Unit =
+    cli:
+      Fever.standard:
+        // `Pathname` resolves a path argument against the INVOKING shell's directory, not the
+        // daemon's, and registers filename completions for it.
+        import workingDirectories.daemonClientWorkingDirectory
 
-          operands(rest) match
-            case Pathname(file) :: scriptArguments =>
-              script(file, scriptArguments.map(_()), force)
+        arguments match
+          case ui.Run() :: rest =>
+            // Read outside `execute`, where completion mode registers it.
+            val force = ui.Force().present
 
-            case _ =>
-              usage(t"fever run [--force] <file> [arguments...]")
+            operands(rest) match
+              case Pathname(file) :: scriptArguments =>
+                script(file, scriptArguments.map(_()), force)
 
-        // The shebang form: `#!/usr/bin/env fever` runs `fever <path> [arguments...]`, and a path
-        // as the shell resolves it — `./hello`, `scripts/hello`, `/usr/local/bin/hello` — always
-        // contains a `/`. A bare word never does, so it is always a subcommand, and a script in
-        // the working directory named like one is reached as `./name` or through `run`.
-        case (argument @ Argument(head)) :: scriptArguments if head.contains(t"/") =>
-          argument match
-            case Pathname(file) => script(file, scriptArguments.map(_()), false)
-            case _              => usage(t"fever <file> [arguments...]")
+              case _ =>
+                usage(t"fever run [--force] <file> [arguments...]")
 
-        case ui.Ps() :: _ =>
-          execute:
-            given Stdio = summon[Invocation].stdio
-            given Environment = summon[Invocation].environment
-            Scripts.list()
-            Exit.Ok
+          case ui.Ps() :: _ => ps()
 
-        // The script's classes and state are unloaded from the daemon; the next invocation
-        // compiles nothing (the classes are cached) but loads afresh.
-        case ui.Stop() :: rest =>
-          val all = ui.All().present
+          // The script's classes and state are unloaded from the daemon; the next invocation
+          // compiles nothing (the classes are cached) but loads afresh.
+          case ui.Stop() :: rest =>
+            val all = ui.All().present
 
-          operands(rest) match
-            case Pathname(file) :: _ =>
-              execute:
-                given Stdio = summon[Invocation].stdio
-                if Scripts.stop(file.encode) then Exit.Ok else NotResident
+            operands(rest) match
+              case Pathname(file) :: _ => stop(file)
+              case _ if all            => stopAll()
+              case _                   => usage(t"fever stop <file> | fever stop --all")
 
-            case _ if all =>
-              execute:
-                given Stdio = summon[Invocation].stdio
-                Scripts.stopAll()
-                Exit.Ok
+          // The shebang form: `#!/usr/bin/env fever` runs `fever <path> [arguments...]`, and a path
+          // as the shell resolves it — `./hello`, `scripts/hello`, `/usr/local/bin/hello` — always
+          // contains a `/`. A bare word never does, so it is always a subcommand, and a script in
+          // the working directory named like one is reached as `./name` or through `run`.
+          case (argument @ Argument(head)) :: scriptArguments if head.contains(t"/") =>
+            argument match
+              case Pathname(file) => script(file, scriptArguments.map(_()), false)
+              case _              => usage(t"fever <file> [arguments...]")
 
-            case _ =>
-              usage(t"fever stop <file> | fever stop --all")
-
-        case ui.Compile() :: _ =>
-          execute:
-            given Stdio = summon[Invocation].stdio
-            Out.println(t"fever compile is not yet implemented")
-            Unimplemented
-
-        case ui.Lsp() :: _ =>
-          execute:
-            given Stdio = summon[Invocation].stdio
-            Out.println(t"fever lsp is not yet implemented")
-            Unimplemented
-
-        case _ =>
-          execute:
-            given Stdio = summon[Invocation].stdio
-            Out.println(t"Usage: fever <subcommand>")
-            Out.println(t"       fever <file> [arguments...]")
-            Out.println(t"")
-            Out.println(t"  run        compile a script, unless it is cached, and run it")
-            Out.println(t"  compile    compile Scala sources once, as scalac would")
-            Out.println(t"  lsp        run the language server over stdio")
-            Out.println(t"  ps         list the resident scripts the daemon has loaded")
-            Out.println(t"  stop       unload a resident script, or all of them")
-            Out.println(t"  about      show this tool's name, version and daemon")
-            Out.println(t"  install    install shell tab-completions and the manpage")
-            Out.println(t"  quit       stop the background daemon")
-            UsageError
+          case ui.Compile() :: _ => unimplemented(t"compile")
+          case ui.Lsp() :: _     => unimplemented(t"lsp")
+          case _                 => help()
 
 // Runs a script with the invocation's streams, environment and directory — which the daemon's
 // own are not — projected once, here, from the `Invocation`.
@@ -181,6 +151,54 @@ private def script(file: Path on Local, arguments: List[Text], force: Boolean)
       Err.println(t"fever: $file: ${Text(error.toString)}")
       error.printStackTrace(invocation.stdio.err)
       ScriptFailed
+
+// The `execute` blocks live in methods of their own, as `usage` does, rather than inline in the
+// dispatch: expanded inside `standard`, a block's `Invocation` is a fresh capability the pure
+// `Stdio` that `Out.println` wants cannot be projected from under capture checking.
+private def unimplemented(subcommand: Text)(using Cli): Execution =
+  execute:
+    given Stdio = summon[Invocation].stdio
+    Out.println(t"fever $subcommand is not yet implemented")
+    Unimplemented
+
+private def ps()(using Cli): Execution =
+  execute:
+    given Stdio = summon[Invocation].stdio
+    given Environment = summon[Invocation].environment
+    Scripts.list()
+    Exit.Ok
+
+private def stop(file: Path on Local)(using Cli): Execution =
+  execute:
+    given Stdio = summon[Invocation].stdio
+    // `Exit.Ok` is named in full: in a type position the bare name resolves through soundness's
+    // export, a different path from the term's, and the two singletons do not unify.
+    val outcome: rudiments.Exit.Ok.type | NotResident.type =
+      if Scripts.stop(file.encode) then rudiments.Exit.Ok else NotResident
+
+    outcome
+
+private def stopAll()(using Cli): Execution =
+  execute:
+    given Stdio = summon[Invocation].stdio
+    Scripts.stopAll()
+    Exit.Ok
+
+private def help()(using Cli): Execution =
+  execute:
+    given Stdio = summon[Invocation].stdio
+    Out.println(t"Usage: fever <subcommand>")
+    Out.println(t"       fever <file> [arguments...]")
+    Out.println(t"")
+    Out.println(t"  run        compile a script, unless it is cached, and run it")
+    Out.println(t"  compile    compile Scala sources once, as scalac would")
+    Out.println(t"  lsp        run the language server over stdio")
+    Out.println(t"  ps         list the resident scripts the daemon has loaded")
+    Out.println(t"  stop       unload a resident script, or all of them")
+    Out.println(t"  about      show this tool's name, version and daemon")
+    Out.println(t"  install    install shell tab-completions and the manpage")
+    Out.println(t"  quit       stop the background daemon")
+    UsageError
 
 private def usage(synopsis: Text)(using Cli): Execution =
   execute:

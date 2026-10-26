@@ -77,7 +77,7 @@ make sync-deps   # install the pinned releases into ~/.ivy2/local
 make fever       # build the native executable for this machine
 make install     # copy it to ~/.local/bin
 make test        # run the suite with fume
-make check       # check the sources with flair
+make check       # check the sources with flare
 ```
 
 A release is cut by a signed tag on a commit CI has passed; the tag is the only place the

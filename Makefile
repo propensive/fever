@@ -48,12 +48,6 @@ install: fever
 	rm -f ${HOME}/.local/bin/fever
 	cp fever ${HOME}/.local/bin/
 
-# Install every library pinned in etc/refs — releases and snapshots alike, transitively — into the
-# local ivy repository, as CI does, so the build resolves exactly the pinned jars rather than
-# whatever a sibling checkout's `publishLocal` last installed under the same version.
-sync-deps:
-	./etc/shared sync-deps.sh
-
 # Check every source against Consequent Style and the project's own rules with flare (the release
 # pinned in etc/tools; `make tools` installs it), as configured in .pyrocosm/flare/config.tel.
 # Findings are warnings, so CI does not run this; PATHS restricts the check to files beneath them.
@@ -90,4 +84,4 @@ test-plain:
 dev:
 	./mill -w fever.core.compile
 
-.PHONY: publishLocal assembly release xek-fetch install sync-deps check tools snapshot snapshot-prune test test-plain dev
+.PHONY: publishLocal assembly release xek-fetch install check tools snapshot snapshot-prune test test-plain dev

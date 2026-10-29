@@ -35,16 +35,14 @@ package fever
 import soundness.*
 
 import alphabets.hexLowerCase
-import filesystemBackends.javaBaseFilesystem
 import logging.silentLogging
+import palettes.solarizedDarkGaugePalette
 import probates.cancelProbate
 import providers.soundnessProvider
-import systems.javaBaseSystem
-import textMetrics.uniformMetric
-import tableStyles.thickTableStyle
-import palettes.solarizedDarkGaugePalette
-
 import pyrocosm.{Block, Notices, TerminalRenderer}
+import systems.javaBaseSystem
+import tableStyles.thickTableStyle
+import textMetrics.uniformMetric
 
 // Compiling a script's body: a cold compile (fever.md §1) through anthology, against the
 // classpath Fever itself runs with — the fork's standard library, Soundness, and a script's
@@ -131,7 +129,8 @@ object Compile:
     Scalac[3.9](options)(classpath)(Map(file -> body), out)
 
   // The width a report is laid out at: the terminal's columns, within reason, or a page's.
-  def columns(using Environment): Int = safely(Environment.columns[Text].s.toInt).lay(100)(_.min(160))
+  def columns(using Environment): Int =
+    safely(Environment.columns[Text].s.toInt).lay(100)(_.min(160))
 
   // The script's lines, highlighted once for the excerpts of every notice about it.
   def lines(body: Text): List[Block.Line] = Notices.lines(body)
@@ -143,7 +142,8 @@ object Compile:
   // the script's path is supplied.
   def report(notice: Notice, file: Text, lines: List[Block.Line], width: Int)(using Stdio): Unit =
     val diagnostic: Block = Notices.diagnostic(notice.copy(file = file), lines)
-    TerminalRenderer().blocks(List(diagnostic), width).each { (line: Teletype) => Err.println(line) }
+
+    TerminalRenderer().blocks(List(diagnostic), width).each: (line: Teletype) => Err.println(line)
 
   // A diagnostic as scalac prints one, `file:line:column: severity: message`, the one-line form
   // an editor parses.

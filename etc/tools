@@ -5,4 +5,4 @@
 # test suites, flare checks the sources.
 # See propensive/.github.
 propensive/fume	0.8.3
-propensive/flare	0.10.0
+propensive/flare	0.12.1

@@ -35,18 +35,16 @@ package fever
 import soundness.*
 
 import charsets.utf8Charset
-import codepages.utf8Codepage
 import filesystemBackends.javaBaseFilesystem
 import filesystemOptions.deleteRecursively
 import filesystemOptions.dereferenceSymlinks
 import filesystemTraversal.preOrderTraversal
-import pathInterfaces.pathOnLinux
+import palettes.solarizedDarkGaugePalette
 import pyrocosm.Runtime  // not `java.lang`'s, which the root import would otherwise supply
 import pyrocosm.{Block, Inline, TelSyntax, TerminalRenderer, Tone}
-import textMetrics.uniformMetric
-import tableStyles.thickTableStyle
-import palettes.solarizedDarkGaugePalette
 import systems.javaBaseSystem
+import tableStyles.thickTableStyle
+import textMetrics.uniformMetric
 import textSanitizers.skipSanitizer
 
 // A script, end to end: read, split, validated, compiled unless cached, checked for its entry
@@ -196,7 +194,8 @@ object Scripts:
 
             Block.Diagnostic(Tone.Failure, location, message, excerpt, detail)
 
-        TerminalRenderer().blocks(diagnostics, Compile.columns).each { (line: Teletype) => Err.println(line) }
+        TerminalRenderer().blocks(diagnostics, Compile.columns).each: (line: Teletype) =>
+          Err.println(line)
 
       case _ =>
         Err.println(t"fever: $path: ${error.message.text}")

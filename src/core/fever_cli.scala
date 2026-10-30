@@ -37,7 +37,6 @@ import soundness.*
 // `pyrocosm.Tool` is imported explicitly, so that it outranks the `Tool` the `soundness.*`
 // wildcard exports (anthology's).
 import backstops.silentBackstop
-import executives.completionsExecutive
 import interpreters.posixInterpreter
 import pyrocosm.Tool
 import systems.javaBaseSystem

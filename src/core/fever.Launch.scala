@@ -39,7 +39,7 @@ import soundness.*
 
 // A script's `Runtime` is Pyrocosm's, not `java.lang`'s, which the root import would otherwise
 // supply.
-import pyrocosm.Runtime
+import pyrocosm.{Classpaths, Diversions, Runtime}
 
 // Running a compiled script: finding its entry point, and calling it with its `Runtime`.
 object Launch:
@@ -130,9 +130,11 @@ object Launch:
   class Loaded(val loader: Classloader, instance: Any, method: java.lang.reflect.Method)
   extends Program:
     // Calls `main` in-process, as fume runs a suite, with the JVM's streams diverted to the
-    // client's for the duration, so that output which bypasses `Runtime` still reaches the user.
+    // client's for the duration — this thread's alone, so that two scripts running at once in
+    // the daemon keep their output apart — so that output which bypasses `Runtime` still
+    // reaches the user.
     def invoke(runtime: Runtime)(using Stdio): Unit =
-      Stdio.divert(summon[Stdio]):
+      Diversions.threaded(summon[Stdio]):
         loader.use(method.invoke(instance, runtime))
 
     // Closing the loader releases its jars' file handles; the classes themselves are collected
@@ -142,8 +144,8 @@ object Launch:
       case _                               => ()
 
   def load(out: Path on Linux, entries: List[Text], entryPoint: Text): Optional[Loaded] =
-    val extra: List[Classpath.Entry.Directory | Classpath.Entry.Jar] = entries.map: entry =>
-      if entry.ends(t".jar") then Classpath.Entry.Jar(entry) else Classpath.Entry.Directory(entry)
+    val extra: List[Classpath.Entry.Directory | Classpath.Entry.Jar] =
+      entries.map(Classpaths.entry(_))
 
     val classpath = LocalClasspath((Classpath.Entry.Directory(out.encode) :: extra)*)
     val parent = Classloader[Launch.type]

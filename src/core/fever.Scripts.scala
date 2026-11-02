@@ -39,12 +39,10 @@ import filesystemBackends.javaBaseFilesystem
 import filesystemOptions.deleteRecursively
 import filesystemOptions.dereferenceSymlinks
 import filesystemTraversal.preOrderTraversal
-import palettes.solarizedDarkGaugePalette
 import pyrocosm.Runtime  // not `java.lang`'s, which the root import would otherwise supply
-import pyrocosm.{Block, Inline, TelSyntax, TerminalRenderer, Tone}
+import pyrocosm.standardRendering.given
+import pyrocosm.{Block, Classpaths, Inline, TelSyntax, TerminalRenderer, Timing, Tone}
 import systems.javaBaseSystem
-import tableStyles.thickTableStyle
-import textMetrics.uniformMetric
 import textSanitizers.skipSanitizer
 
 // A script, end to end: read, split, validated, compiled unless cached, checked for its entry
@@ -55,7 +53,7 @@ object Scripts:
     Exit | NoScript.type | InvalidHeader.type | CompileFailed.type | NoEntryPoint.type |
       ScriptFailed.type
 
-  def run(path: Text, arguments: List[Text], force: Boolean)
+  def run(path: Text, arguments: List[Text], force: Boolean, width: Int)
     ( using Stdio, Environment, WorkingDirectory, Monitor )
   :   Outcome =
 
@@ -72,7 +70,7 @@ object Scripts:
         NoScript
 
       case error: Script.Error =>
-        report(path, safely(path.as[Path on Linux].read[Text]), error)
+        report(path, safely(path.as[Path on Linux].read[Text]), error, width)
         InvalidHeader
 
       case error: Compiler.Error =>
@@ -108,23 +106,23 @@ object Scripts:
 
           // A resident which still matches the file runs at once; otherwise the file is compiled
           // unless cached, loaded, and kept.
-          Residents.daemon.lookup(real, key, stamps).let(invoke(_, arguments)).or:
-            if cached || compile(file, parsed, entries, out) then
+          Residents.daemon.lookup(real, key, stamps).let(invoke(_, arguments, width)).or:
+            if cached || compile(file, parsed, entries, out, width) then
               val resident =
                 Residents.Resident(real, key, stamps, program(out, entries), Residents.now())
 
-              invoke(Residents.daemon.admit(resident), arguments)
+              invoke(Residents.daemon.admit(resident), arguments, width)
             else
               CompileFailed
 
-        else if cached || compile(file, parsed, entries, out) then
-          invoke(program(out, entries), arguments)
+        else if cached || compile(file, parsed, entries, out, width) then
+          invoke(program(out, entries), arguments, width)
         else
           CompileFailed
 
   // The residents, as `fever ps` shows them: one row each, with how long it has been loaded,
   // how long since it last ran, and how many times it has.
-  def list()(using Stdio, Environment): Unit =
+  def list(width: Int)(using Stdio, Environment): Unit =
     val now = Residents.now()
     Residents.daemon.sweep(now)
     val residents = Residents.daemon.all
@@ -139,13 +137,12 @@ object Scripts:
       val rows: List[Block.Row] = residents.map: resident =>
         Block.Row(List(
           Block.Cell(Inline.text(resident.path)),
-          Block.Cell(Inline.text(elapsed(now - resident.since))),
-          Block.Cell(Inline.text(elapsed(now - resident.last))),
+          Block.Cell(Inline.text(Timing.show(now - resident.since))),
+          Block.Cell(Inline.text(Timing.show(now - resident.last))),
           Block.Cell(Inline.text(resident.runs.show))))
 
       val table: Block = Block.Table(columns, rows)
-      val rendered: List[Teletype] = TerminalRenderer().blocks(List(table), Compile.columns)
-      rendered.each: (line: Teletype) => Out.println(line)
+      TerminalRenderer().printOut(List(table), width)
 
   // Unloads the resident for the script, reporting whether there was one.
   def stop(path: Text)(using Stdio): Boolean =
@@ -163,16 +160,14 @@ object Scripts:
     Out.println(t"fever: unloaded ${count.show} resident $noun")
 
   // A duration as `fever about` shows its uptime: `1h 2m 3s`.
-  private def elapsed(millis: Long): Text =
-    val seconds: Long = millis.max(0L)/1000
-    val hours: Long = seconds/3600
-    val minutes: Long = seconds%3600/60
-    t"${hours.show}h ${minutes.show}m ${(seconds%60).show}s"
+  // A throwable's trace, rendered as every tool renders one.
+  def trace(error: Throwable, width: Int)(using Stdio): Unit =
+    TerminalRenderer().print(List(Block.Trace.of(StackTrace(error))), width)
 
   // A header's problems, each a diagnostic: where in the script, what, and the lines of the
   // header around it, highlighted as TEL, with the place marked; the keyword path the
   // rejection names follows, since a validator's rejection says nothing else about its field.
-  private def report(path: Text, source: Optional[Text], error: Script.Error)
+  private def report(path: Text, source: Optional[Text], error: Script.Error, width: Int)
     ( using Stdio, Environment )
   :   Unit =
 
@@ -194,14 +189,17 @@ object Scripts:
 
             Block.Diagnostic(Tone.Failure, location, message, excerpt, detail)
 
-        TerminalRenderer().blocks(diagnostics, Compile.columns).each: (line: Teletype) =>
-          Err.println(line)
+        TerminalRenderer().print(diagnostics, width)
 
       case _ =>
         Err.println(t"fever: $path: ${error.message.text}")
 
   private def compile
-    ( file: Path on Linux, parsed: Script.Parsed, entries: List[Text], out: Path on Linux )
+    ( file:    Path on Linux,
+      parsed:  Script.Parsed,
+      entries: List[Text],
+      out:     Path on Linux,
+      width:   Int )
     ( using Stdio, Monitor, Environment )
   :   Boolean raises Compiler.Error raises Async.Error raises Io.Error =
 
@@ -221,7 +219,7 @@ object Scripts:
           Err.println(t"fever: the script could not be highlighted: ${Text(error.toString)}")
           Nil
 
-    process.notices.each: notice => Compile.report(notice, file.encode, lines, Compile.columns)
+    process.notices.each: notice => Compile.report(notice, file.encode, lines, width)
 
     result match
       case CompileResult.Success =>
@@ -248,12 +246,8 @@ object Scripts:
 
     val tastyFiles = out.descendants.to[List].map(_.encode).filter(_.ends(t".tasty"))
 
-    val classpath: List[Text] = Compile.classpath(entries).entries.map:
-      case Classpath.Entry.Directory(path) => path
-      case Classpath.Entry.Jar(path)       => path
-      case Classpath.Entry.JavaRuntime     => t""
-
-    . filter(_ != t"")
+    val classpath: List[Text] = Compile.classpath(entries).entries.bind: entry =>
+      Classpaths.path(entry).lay(Nil)(List(_))
 
     val entryPoint = Launch.entryPoint(tastyFiles, classpath)
 
@@ -263,7 +257,8 @@ object Scripts:
 
   // Runs `main` with a `Runtime` made from the invocation, once (`program`) or again
   // (`resident`).
-  private def invoke(program: Launch.Program | Residents.Resident, arguments: List[Text])
+  private def invoke
+    ( program: Launch.Program | Residents.Resident, arguments: List[Text], width: Int )
     ( using Stdio, Environment, WorkingDirectory )
   :   Exit | ScriptFailed.type =
 

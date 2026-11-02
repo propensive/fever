@@ -263,7 +263,8 @@ object fever extends Project:
   // Fever's own suite, assembled into one jar that fume runs (`make test`, through
   // .pyrocosm/fume/config.tel) or plain `java` does (`make test-plain`, `fever.runTests`).
   object test extends Component(core):
-    def mvnDeps = Task(settings.testDeps(deps.soundness()))
+    def mvnDeps = Task:
+      settings.testDeps(deps.soundness()) ++ Seq(mvn"dev.propensive:pyrocosm-harness:${deps.pyrocosm()}")
     def scalacPluginMvnDeps = Task(Seq(mvn"dev.propensive:beneficence-plugin:${deps.soundness()}"))
     def finalMainClass = "fever.runTests"
 

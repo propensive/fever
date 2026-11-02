@@ -34,7 +34,9 @@ package fever
 
 import soundness.*
 
+import filesystemBackends.javaBaseFilesystem
 import pyrocosm.Runtime  // not `java.lang`'s, which the root import would otherwise supply
+import pyrocosm.Filing
 
 // The scripts the daemon keeps loaded between invocations: those whose header says `resident`
 // (script.schema.tel). Fever's own JVM is resident already; what an ordinary script loses between
@@ -52,7 +54,7 @@ object Residents:
   // daemon's heap indefinitely.
   val daemon: Residents = Residents(60L*60*1000)
 
-  def now(): Long = java.lang.System.currentTimeMillis()
+  def now(): Long = aviation.now().long
 
   // The classpath entries with their modification times, which is how a rebuilt jar is noticed
   // (the compilation key hashes the entries' paths, not their contents). A directory's time
@@ -61,16 +63,13 @@ object Residents:
   def stamp(entries: List[Text]): List[(Text, Long)] =
     entries.map: entry =>
       val time: Long =
-        try java.nio.file.Files.getLastModifiedTime(java.nio.file.Path.of(entry.s).nn).nn.toMillis
-        catch case error: Exception => 0L
+        safely(entry.as[Path on Linux].modified[Instant over Unix]().long).or(0L)
 
       (entry, time)
 
   // A script's real path — symlinks and `/tmp` vs `/private/tmp` resolved — so that a script
   // reached by two names is one resident, and `fever stop` finds it by either.
-  def canonical(path: Text): Text =
-    try Text(java.nio.file.Path.of(path.s).nn.toRealPath().nn.toString)
-    catch case error: Exception => path
+  def canonical(path: Text): Text = Filing.canonical(path)
 
   // One resident script: where it is, what was loaded, and its history. Invocations are
   // serialised through the lock: `main` runs over shared top-level state, and two at once would

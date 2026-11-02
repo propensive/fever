@@ -34,15 +34,11 @@ package fever
 
 import soundness.*
 
-import alphabets.hexLowerCase
 import logging.silentLogging
-import palettes.solarizedDarkGaugePalette
 import probates.cancelProbate
-import providers.soundnessProvider
-import pyrocosm.{Block, Notices, TerminalRenderer}
+import pyrocosm.{Block, Classpaths, Digests, Notices, TerminalRenderer}
+import pyrocosm.standardRendering.given
 import systems.javaBaseSystem
-import tableStyles.thickTableStyle
-import textMetrics.uniformMetric
 
 // Compiling a script's body: a cold compile (fever.md §1) through anthology, against the
 // classpath Fever itself runs with — the fork's standard library, Soundness, and a script's
@@ -56,39 +52,8 @@ object Compile:
   // TASTy needs; the language features Soundness idioms use; and the predef — proscenium's, with
   // Soundness and a script's `Runtime` already imported, which is what lets a body start at
   // `def main`. Soundness's inclusion is provisional (fever.md §6a).
-  val baseline: List[Text] = List(
-    t"-Zalias-captures",
-    t"-Zdiagnostic-givens",
-    t"-Zgiven-prefixes",
-    t"-Zinline-source-maps",
-    t"-Zopaque-mutability",
-    t"-Zpure-iarrays",
-    t"-Zretains-bounds",
-    t"-Zretains-skolems",
-    t"-Zspreadable-varargs",
-    t"-Zunboxed-pure-types",
-    t"-Zunion-captures",
-    t"-experimental",
-    t"-new-syntax",
-    t"-feature",
-    t"-preview",
-    t"-deprecation",
-    t"-Xmax-inlines", t"32",
-    t"-Yno-flexible-types",
-    t"-Yexplicit-nulls",
-    t"-language:experimental.modularity",
-    t"-language:experimental.dependent",
-    t"-language:experimental.relaxedLambdaSyntax",
-    t"-language:experimental.genericNumberLiterals",
-    t"-language:experimental.into",
-    t"-language:experimental.erasedDefinitions",
-    t"-language:implicitConversions",
-    t"-language:experimental.saferExceptions",
-    t"-language:experimental.strictEqualityPatternMatching",
-    t"-language:experimental.subCases",
-    t"-language:experimental.multiSpreads",
-    t"-Yno-predef",
-    t"-Yimports:java.lang,proscenium,soundness,pyrocosm")
+  val baseline: List[Text] =
+    Classpaths.houseOptions + Classpaths.imports(t"soundness", t"pyrocosm")
 
   // The header's `classpath` entries, absolute: relative to the script's directory, as the
   // header promises, never to the daemon's.
@@ -102,16 +67,12 @@ object Compile:
   def classpath(entries: List[Text])(using System): LocalClasspath =
     val own = LocalClasspath.of(Classloader[Compile.type])
 
-    val extra: List[Classpath.Entry.Directory | Classpath.Entry.Jar] = entries.map: entry =>
-      if entry.ends(t".jar") then Classpath.Entry.Jar(entry) else Classpath.Entry.Directory(entry)
-
-    LocalClasspath((own.entries + extra)*)
+    LocalClasspath((own.entries + entries.map(Classpaths.entry(_)))*)
 
   // What determines a compilation's output, and so names its cache entry: Fever's version (one
   // Fever per Scala version, so the compiler's too), the whole file (header and body), and the
   // classpath entries by path.
-  def key(text: Text, entries: List[Text]): Text =
-    t"${Fever.version}\n$text\n${entries.join(t":")}".digest[Blake3].serialize[Hex]
+  def key(text: Text, entries: List[Text]): Text = Digests.of(Fever.version, text, entries.join(t":"))
 
   def cache(key: Text)(using Environment): Path on Linux =
     unsafely(Xdg.cacheHome[Path on Linux] / t"fever" / t"scripts" / key)
@@ -128,10 +89,6 @@ object Compile:
     val options = (baseline + flags).map(Scalac.Option[Scalac.Versions](_))
     Scalac[3.9](options)(classpath)(Map(file -> body), out)
 
-  // The width a report is laid out at: the terminal's columns, within reason, or a page's.
-  def columns(using Environment): Int =
-    safely(Environment.columns[Text].s.toInt).lay(100)(_.min(160))
-
   // The script's lines, highlighted once for the excerpts of every notice about it.
   def lines(body: Text): List[Block.Line] = Notices.lines(body)
 
@@ -142,8 +99,7 @@ object Compile:
   // the script's path is supplied.
   def report(notice: Notice, file: Text, lines: List[Block.Line], width: Int)(using Stdio): Unit =
     val diagnostic: Block = Notices.diagnostic(notice.copy(file = file), lines)
-
-    TerminalRenderer().blocks(List(diagnostic), width).each: (line: Teletype) => Err.println(line)
+    TerminalRenderer().print(List(diagnostic), width)
 
   // A diagnostic as scalac prints one, `file:line:column: severity: message`, the one-line form
   // an editor parses.

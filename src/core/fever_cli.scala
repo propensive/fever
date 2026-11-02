@@ -38,7 +38,7 @@ import soundness.*
 // wildcard exports (anthology's).
 import backstops.silentBackstop
 import interpreters.posixInterpreter
-import pyrocosm.Tool
+import pyrocosm.{ambient, Tool}
 import systems.javaBaseSystem
 import threads.platformThreads
 
@@ -57,14 +57,14 @@ val Fever: Tool =
         t"that compiles Scala through the lira.tool contract, one release per Scala " +
         t"version, and runs single-file Scala scripts." )
 
+// Fever's own exit statuses; the standard ones (`Tool.UsageError`, `Tool.Unimplemented`, …) are
+// Pyrocosm's, and a tool's own are numbered from 32 so that none collides with them.
 object CompileFailed extends Status(1, t"the script did not compile")
-object UsageError extends Status(2, t"the command line was not understood")
 object NoScript extends Status(3, t"the script could not be read")
 object InvalidHeader extends Status(4, t"the script's header is not valid")
 object NoEntryPoint extends Status(5, t"the script defines no `main(using Runtime): Unit`")
 object ScriptFailed extends Status(6, t"the script threw an exception")
-object Unimplemented extends Status(7, t"this subcommand is not yet implemented")
-object NotResident extends Status(8, t"the script is not resident")
+object NotResident extends Status(32, t"the script is not resident")
 
 object ui:
   val Run = Subcommand("run", "compile a script, unless it is cached, and run it")
@@ -133,43 +133,34 @@ object Client uses parasite.threads, surveillance.Watcher:
           case _                 => help()
 
 // Runs a script with the invocation's streams, environment and directory — which the daemon's
-// own are not — projected once, here, from the `Invocation`.
+// own are not — projected once by `ambient`. Every failure `Scripts.run` anticipates is a
+// status; anything else is a bug in Fever, and is reported with its trace rather than vanishing
+// into the daemon.
 private def script(file: Path on Local, arguments: List[Text], force: Boolean)
-  ( using Cli, Monitor )
+  ( using Cli, Resident, Monitor )
 :   Execution =
 
-  execute:
-    val invocation = summon[Invocation]
-    given Stdio = invocation.stdio
-    given Environment = invocation.environment
-    given WorkingDirectory = invocation.workingDirectory
-
-    // Every failure `Scripts.run` anticipates is a status; anything else is a bug in Fever, and
-    // is reported with its trace rather than vanishing into the daemon.
+  ambient:
     try Scripts.run(file.encode, arguments, force) catch case error: Throwable =>
       Err.println(t"fever: $file: ${Text(error.toString)}")
-      error.printStackTrace(invocation.stdio.err)
+      Scripts.trace(error, Fever.columns)
       ScriptFailed
 
 // The `execute` blocks live in methods of their own, as `usage` does, rather than inline in the
 // dispatch: expanded inside `standard`, a block's `Invocation` is a fresh capability the pure
 // `Stdio` that `Out.println` wants cannot be projected from under capture checking.
 private def unimplemented(subcommand: Text)(using Cli): Execution =
-  execute:
-    given Stdio = summon[Invocation].stdio
+  ambient:
     Out.println(t"fever $subcommand is not yet implemented")
-    Unimplemented
+    Tool.Unimplemented
 
-private def ps()(using Cli): Execution =
-  execute:
-    given Stdio = summon[Invocation].stdio
-    given Environment = summon[Invocation].environment
+private def ps()(using Cli, Resident): Execution =
+  ambient:
     Scripts.list()
     Exit.Ok
 
 private def stop(file: Path on Local)(using Cli): Execution =
-  execute:
-    given Stdio = summon[Invocation].stdio
+  ambient:
     // `Exit.Ok` is named in full: in a type position the bare name resolves through soundness's
     // export, a different path from the term's, and the two singletons do not unify.
     val outcome: rudiments.Exit.Ok.type | NotResident.type =
@@ -178,29 +169,17 @@ private def stop(file: Path on Local)(using Cli): Execution =
     outcome
 
 private def stopAll()(using Cli): Execution =
-  execute:
-    given Stdio = summon[Invocation].stdio
+  ambient:
     Scripts.stopAll()
     Exit.Ok
 
+// The shebang form is listed beside the subcommands, since it is how a script is usually run.
 private def help()(using Cli): Execution =
-  execute:
-    given Stdio = summon[Invocation].stdio
-    Out.println(t"Usage: fever <subcommand>")
-    Out.println(t"       fever <file> [arguments...]")
-    Out.println(t"")
-    Out.println(t"  run        compile a script, unless it is cached, and run it")
-    Out.println(t"  compile    compile Scala sources once, as scalac would")
-    Out.println(t"  lsp        run the language server over stdio")
-    Out.println(t"  ps         list the resident scripts the daemon has loaded")
-    Out.println(t"  stop       unload a resident script, or all of them")
-    Out.println(t"  about      show this tool's name, version and daemon")
-    Out.println(t"  install    install shell tab-completions and the manpage")
-    Out.println(t"  quit       stop the background daemon")
-    UsageError
+  ambient:
+    Out.println(t"Usage: fever <file> [arguments...]")
+    Fever.usage(List(ui.Run, ui.Compile, ui.Lsp, ui.Ps, ui.Stop))
 
 private def usage(synopsis: Text)(using Cli): Execution =
-  execute:
-    given Stdio = summon[Invocation].stdio
+  ambient:
     Err.println(t"fever: usage: $synopsis")
-    UsageError
+    Tool.UsageError

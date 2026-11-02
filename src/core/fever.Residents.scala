@@ -35,8 +35,8 @@ package fever
 import soundness.*
 
 import filesystemBackends.javaBaseFilesystem
-import pyrocosm.Runtime  // not `java.lang`'s, which the root import would otherwise supply
 import pyrocosm.Filing
+import pyrocosm.Runtime  // not `java.lang`'s, which the root import would otherwise supply
 
 // The scripts the daemon keeps loaded between invocations: those whose header says `resident`
 // (script.schema.tel). Fever's own JVM is resident already; what an ordinary script loses between

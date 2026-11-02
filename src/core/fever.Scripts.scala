@@ -40,8 +40,8 @@ import filesystemOptions.deleteRecursively
 import filesystemOptions.dereferenceSymlinks
 import filesystemTraversal.preOrderTraversal
 import pyrocosm.Runtime  // not `java.lang`'s, which the root import would otherwise supply
-import pyrocosm.{Block, Classpaths, Inline, TelSyntax, TerminalRenderer, Timing, Tone}
 import pyrocosm.standardRendering.given
+import pyrocosm.{Block, Classpaths, Inline, TelSyntax, TerminalRenderer, Timing, Tone}
 import systems.javaBaseSystem
 import textSanitizers.skipSanitizer
 
@@ -53,8 +53,8 @@ object Scripts:
     Exit | NoScript.type | InvalidHeader.type | CompileFailed.type | NoEntryPoint.type |
       ScriptFailed.type
 
-  def run(path: Text, arguments: List[Text], force: Boolean)
-    ( using Stdio, Environment, WorkingDirectory, Monitor, Resident )
+  def run(path: Text, arguments: List[Text], force: Boolean, width: Int)
+    ( using Stdio, Environment, WorkingDirectory, Monitor )
   :   Outcome =
 
     // Every invocation is the occasion to unload residents nobody has used for a while.
@@ -122,7 +122,7 @@ object Scripts:
 
   // The residents, as `fever ps` shows them: one row each, with how long it has been loaded,
   // how long since it last ran, and how many times it has.
-  def list()(using Stdio, Environment, Resident): Unit =
+  def list(width: Int)(using Stdio, Environment): Unit =
     val now = Residents.now()
     Residents.daemon.sweep(now)
     val residents = Residents.daemon.all
@@ -142,7 +142,7 @@ object Scripts:
           Block.Cell(Inline.text(resident.runs.show))))
 
       val table: Block = Block.Table(columns, rows)
-      TerminalRenderer().printOut(List(table), Fever.columns)
+      TerminalRenderer().printOut(List(table), width)
 
   // Unloads the resident for the script, reporting whether there was one.
   def stop(path: Text)(using Stdio): Boolean =
@@ -246,12 +246,8 @@ object Scripts:
 
     val tastyFiles = out.descendants.to[List].map(_.encode).filter(_.ends(t".tasty"))
 
-    val classpath: List[Text] = Compile.classpath(entries).entries.map:
-      case Classpath.Entry.Directory(path) => path
-      case Classpath.Entry.Jar(path)       => path
-      case Classpath.Entry.JavaRuntime     => t""
-
-    . filter(_ != t"")
+    val classpath: List[Text] = Compile.classpath(entries).entries.bind: entry =>
+      Classpaths.path(entry).lay(Nil)(List(_))
 
     val entryPoint = Launch.entryPoint(tastyFiles, classpath)
 

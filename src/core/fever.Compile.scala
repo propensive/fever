@@ -36,8 +36,8 @@ import soundness.*
 
 import logging.silentLogging
 import probates.cancelProbate
-import pyrocosm.{Block, Classpaths, Digests, Notices, TerminalRenderer}
 import pyrocosm.standardRendering.given
+import pyrocosm.{Block, Classpaths, Digests, Notices, ScalacOptions, TerminalRenderer}
 import systems.javaBaseSystem
 
 // Compiling a script's body: a cold compile (fever.md §1) through anthology, against the
@@ -53,7 +53,7 @@ object Compile:
   // Soundness and a script's `Runtime` already imported, which is what lets a body start at
   // `def main`. Soundness's inclusion is provisional (fever.md §6a).
   val baseline: List[Text] =
-    Classpaths.houseOptions + Classpaths.imports(t"soundness", t"pyrocosm")
+    ScalacOptions.houseOptions + ScalacOptions.imports(t"soundness", t"pyrocosm")
 
   // The header's `classpath` entries, absolute: relative to the script's directory, as the
   // header promises, never to the daemon's.
@@ -72,7 +72,8 @@ object Compile:
   // What determines a compilation's output, and so names its cache entry: Fever's version (one
   // Fever per Scala version, so the compiler's too), the whole file (header and body), and the
   // classpath entries by path.
-  def key(text: Text, entries: List[Text]): Text = Digests.of(Fever.version, text, entries.join(t":"))
+  def key(text: Text, entries: List[Text]): Text =
+    Digests.of(Fever.version, text, entries.join(t":"))
 
   def cache(key: Text)(using Environment): Path on Linux =
     unsafely(Xdg.cacheHome[Path on Linux] / t"fever" / t"scripts" / key)

@@ -140,10 +140,12 @@ private def script(file: Path on Local, arguments: List[Text], force: Boolean)
   ( using Cli, Resident, Monitor )
 :   Execution =
 
+  val width: Int = Fever.columns
+
   ambient:
-    try Scripts.run(file.encode, arguments, force) catch case error: Throwable =>
+    try Scripts.run(file.encode, arguments, force, width) catch case error: Throwable =>
       Err.println(t"fever: $file: ${Text(error.toString)}")
-      Scripts.trace(error, Fever.columns)
+      Scripts.trace(error, width)
       ScriptFailed
 
 // The `execute` blocks live in methods of their own, as `usage` does, rather than inline in the
@@ -155,8 +157,10 @@ private def unimplemented(subcommand: Text)(using Cli): Execution =
     Tool.Unimplemented
 
 private def ps()(using Cli, Resident): Execution =
+  val width: Int = Fever.columns
+
   ambient:
-    Scripts.list()
+    Scripts.list(width)
     Exit.Ok
 
 private def stop(file: Path on Local)(using Cli): Execution =

@@ -32,8 +32,6 @@
                                                                                                   */
 package fever
 
-import soundness.*
-
 import pyrocosm.Harness
 
 // Fever's own suite, run WITHOUT fume, through the harness every tool's is (see

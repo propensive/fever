@@ -168,7 +168,7 @@ object settings:
 // version. The file is read as a source, so editing it invalidates every resolution.
 object deps extends CruxModule:
   def refsFiles = Task.Sources(mill.api.BuildCtx.workspaceRoot / "etc" / "refs")
-  def declared = Seq(Pin("propensive/proscala", "3.10.0-pro-1.0.2"))
+  def declared = Seq(Pin("propensive/proscala", "3.10.0-pro-1.0.6"))
 
   def soundness: T[String] = Task(version("soundness")())
   def pyrocosm: T[String] = Task(version("pyrocosm")())

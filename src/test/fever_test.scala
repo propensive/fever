@@ -186,3 +186,36 @@ def main(using Runtime): Unit =
         Compile.render(notice, t"/tmp/hello")
 
       . assert(_ == t"/tmp/hello:12:3: error: Not found: x")
+
+    suite(m"Bolt codes"):
+      test(m"a script with no entry point is ↯/f.15.1.1"):
+        Launch.Error(Launch.Error.Reason.NoMain).bolt.text
+
+      . assert(_ == t"↯/f.15.1.1")
+
+      test(m"a script whose `main` has the wrong signature is ↯/f.15.1.2"):
+        Launch.Error(Launch.Error.Reason.WrongSignature(t"(): Unit")).bolt.text
+
+      . assert(_ == t"↯/f.15.1.2")
+
+      test(m"a file with no `##` line is ↯/f.15.2.2"):
+        capture[Script.Error](Script.parse(t"language scala\n")).bolt.text
+
+      . assert(_ == t"↯/f.15.2.2")
+
+      test(m"a header which is not TEL carries TEL's code"):
+        capture[Script.Error](Script.parse(t"language scala\n   flag -x\n##\n")).bolt.text
+
+      . assert(_ == t"↯/f.15.2/s.118.1/t.1.7")
+
+      test(m"a rejection's diagnostic is ↯/f.15.2.3, carrying TEL's code"):
+        capture[Script.Error](Script.parse(t"language scala\ncolour blue\n##\n")).reason match
+          case Script.Error.Reason.Invalid(rejections) => rejections.map(_.bolt.text)
+          case _                                       => Nil
+
+      . assert(_.all(_.starts(t"↯/f.15.2.3/s.")))
+
+      test(m"a usage error is printed after its label"):
+        FeverBolts(FeverBolts.usage).label
+
+      . assert(_ == t"[↯/f.15.7]")

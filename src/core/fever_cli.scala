@@ -135,7 +135,7 @@ object Client uses parasite.threads, surveillance.Watcher:
 // Runs a script with the invocation's streams, environment and directory — which the daemon's
 // own are not — projected once by `ambient`. Every failure `Scripts.run` anticipates is a
 // status; anything else is a bug in Fever, and is reported with its trace rather than vanishing
-// into the daemon.
+// into the daemon, under a code of its own which carries the throwable's, if it has one.
 private def script(file: Path on Local, arguments: List[Text], force: Boolean)
   ( using Cli, Resident, Monitor )
 :   Execution =
@@ -144,7 +144,11 @@ private def script(file: Path on Local, arguments: List[Text], force: Boolean)
 
   ambient:
     try Scripts.run(file.encode, arguments, force, width) catch case error: Throwable =>
-      Err.println(t"fever: $file: ${Text(error.toString)}")
+      val code: fulminate.Bolt = error match
+        case error: fulminate.Error => FeverBolts(FeverBolts.unanticipated).carrying(error.bolt)
+        case _                      => FeverBolts(FeverBolts.unanticipated)
+
+      Err.println(t"fever: $file: ${code.label} ${Text(error.toString)}")
       Scripts.trace(error, width)
       ScriptFailed
 
@@ -153,7 +157,8 @@ private def script(file: Path on Local, arguments: List[Text], force: Boolean)
 // `Stdio` that `Out.println` wants cannot be projected from under capture checking.
 private def unimplemented(subcommand: Text)(using Cli): Execution =
   ambient:
-    Out.println(t"fever $subcommand is not yet implemented")
+    val label = FeverBolts(FeverBolts.unimplemented).label
+    Out.println(t"$label fever $subcommand is not yet implemented")
     Tool.Unimplemented
 
 private def ps()(using Cli, Resident): Execution =
@@ -185,5 +190,5 @@ private def help()(using Cli): Execution =
 
 private def usage(synopsis: Text)(using Cli): Execution =
   ambient:
-    Err.println(t"fever: usage: $synopsis")
+    Err.println(t"fever: ${FeverBolts(FeverBolts.usage).label} usage: $synopsis")
     Tool.UsageError

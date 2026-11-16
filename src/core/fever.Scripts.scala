@@ -222,16 +222,16 @@ object Scripts:
     process.notices.each: notice => Compile.report(notice, file.encode, lines, width)
 
     result match
-      case CompileResult.Success =>
+      case Compiler.Result.Success =>
         Compile.marker(out).create[File]()
         true
 
-      case CompileResult.Failure =>
+      case Compiler.Result.Failure =>
         false
 
       // The crash's own chain of causes, since a compiler which cannot start — a classpath
       // the daemon's host cannot see, say — says why only there.
-      case CompileResult.Crash(error) =>
+      case Compiler.Result.Crash(error) =>
         def causes(trace: StackTrace): List[Text] =
           t"${trace.className}: ${trace.message.text}" :: trace.cause.lay(Nil)(causes(_))
 

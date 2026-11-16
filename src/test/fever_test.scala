@@ -182,6 +182,7 @@ def main(using Runtime): Unit =
       test(m"a notice renders as scalac prints one"):
         val line = Ordinal.zerary(11)
         val span = Span.area(line, Ordinal.zerary(2), line, Ordinal.zerary(3))
-        Compile.render(Notice(Importance.Error, t"hello", t"Not found: x", span), t"/tmp/hello")
+        val notice = Compiler.Notice(Importance.Error, t"hello", t"Not found: x", span)
+        Compile.render(notice, t"/tmp/hello")
 
       . assert(_ == t"/tmp/hello:12:3: error: Not found: x")

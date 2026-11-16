@@ -62,11 +62,11 @@ object Scripts:
 
     recover:
       case error: Path.Error =>
-        Err.println(t"fever: $path: ${error.message.text}")
+        Err.println(t"fever: $path: ${error.labelled.text}")
         NoScript
 
       case error: Io.Error =>
-        Err.println(t"fever: $path: ${error.message.text}")
+        Err.println(t"fever: $path: ${error.labelled.text}")
         NoScript
 
       case error: Script.Error =>
@@ -74,15 +74,15 @@ object Scripts:
         InvalidHeader
 
       case error: Compiler.Error =>
-        Err.println(t"fever: ${error.message.text}")
+        Err.println(t"fever: ${error.labelled.text}")
         CompileFailed
 
       case error: Async.Error =>
-        Err.println(t"fever: ${error.message.text}")
+        Err.println(t"fever: ${error.labelled.text}")
         CompileFailed
 
       case error: Launch.Error =>
-        Err.println(t"fever: $path: ${error.message.text}")
+        Err.println(t"fever: $path: ${error.labelled.text}")
         NoEntryPoint
 
     . protect:
@@ -150,7 +150,7 @@ object Scripts:
     val stopped = Residents.daemon.stop(real)
 
     if stopped then Out.println(t"fever: unloaded $real")
-    else Err.println(t"fever: $real is not resident")
+    else Err.println(t"fever: ${FeverBolts(FeverBolts.notResident).label} $real is not resident")
 
     stopped
 
@@ -187,12 +187,12 @@ object Scripts:
                 Block.Note.of(span, Block.Note.Style.Erroneous).lay(Nil): (note: Block.Note) =>
                   List(Block.Code.excerpt(pyrocosm.Language.Tel, lines, List(note)))
 
-            Block.Diagnostic(Tone.Failure, location, message, excerpt, detail)
+            Block.Diagnostic(Tone.Failure, location, message, excerpt, detail, rejection.bolt)
 
         TerminalRenderer().print(diagnostics, width)
 
       case _ =>
-        Err.println(t"fever: $path: ${error.message.text}")
+        Err.println(t"fever: $path: ${error.labelled.text}")
 
   private def compile
     ( file:    Path on Linux,
@@ -222,20 +222,21 @@ object Scripts:
     process.notices.each: notice => Compile.report(notice, file.encode, lines, width)
 
     result match
-      case CompileResult.Success =>
+      case Compiler.Result.Success =>
         Compile.marker(out).create[File]()
         true
 
-      case CompileResult.Failure =>
+      case Compiler.Result.Failure =>
         false
 
       // The crash's own chain of causes, since a compiler which cannot start — a classpath
       // the daemon's host cannot see, say — says why only there.
-      case CompileResult.Crash(error) =>
+      case Compiler.Result.Crash(error) =>
         def causes(trace: StackTrace): List[Text] =
           t"${trace.className}: ${trace.message.text}" :: trace.cause.lay(Nil)(causes(_))
 
-        Err.println(t"fever: the compiler crashed: ${causes(error).join(t"; caused by ")}")
+        val label = FeverBolts(FeverBolts.compilerCrash).label
+        Err.println(t"fever: $label the compiler crashed: ${causes(error).join(t"; caused by ")}")
         false
 
   // The compiled script, loaded: its entry point found in its TASTy, and its classes and the

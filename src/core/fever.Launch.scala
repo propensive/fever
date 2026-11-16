@@ -44,10 +44,11 @@ import pyrocosm.{Classpaths, Diversions, Runtime}
 // Running a compiled script: finding its entry point, and calling it with its `Runtime`.
 object Launch:
   object Error:
-    enum Reason:
-      case NoMain
-      case WrongSignature(found: Text)
-      case Uninspectable(detail: Text)
+    // Numbered for their bolt codes, `↯/f.15.1.<number>`, which must survive any reordering.
+    enum Reason(val number: Int):
+      case NoMain                     extends Reason(1)
+      case WrongSignature(found: Text) extends Reason(2)
+      case Uninspectable(detail: Text) extends Reason(3)
 
     given communicable: Reason is Communicable =
       case Reason.NoMain =>
@@ -60,7 +61,8 @@ object Launch:
         m"the compiled script could not be inspected: $detail"
 
   case class Error(reason: Error.Reason)(using Diagnostics)
-  extends fulminate.Error(m"the script has no entry point: $reason")
+  extends fulminate.Error(m"the script has no entry point: $reason"):
+    override def bolt: fulminate.Bolt = FeverBolts(1, reason.number)
 
   // The module class holding `main`, by JVM name. The check is made on the compiled TASTy
   // (fever.md §6a) rather than on the source text, so it is exact: a top-level `main` whose one

@@ -47,8 +47,11 @@ object Script:
 
     Tels.Validation.validate(data.read[Tel].as[Tels])
 
-  // One problem with the header: where (a TEL pointer, and a span in the file) and what.
-  case class Rejection(pointer: Text, span: Span, message: Text)
+  // One problem with the header: where (a TEL pointer, and a span in the file), what, and the
+  // code of the TEL error which found it. Its own code is that of an invalid header, carrying
+  // the TEL error's.
+  case class Rejection(pointer: Text, span: Span, message: Text, code: fulminate.Bolt):
+    def bolt: fulminate.Bolt = FeverBolts(2, Error.Reason.Invalid(Nil).number).carrying(code)
 
   // The accrual every problem joins, so that a header is reported whole, never one error at a
   // time: the pattern of stratiform's own accrual tests.
@@ -57,13 +60,17 @@ object Script:
     def add(rejection: Rejection): Rejections = Rejections(items + List(rejection))
 
   object Error:
-    enum Reason:
-      case Unreadable(detail: Text)
-      case NoSeparator
-      case Invalid(rejections: List[Rejection])
+    // Numbered for their bolt codes, `↯/f.15.2.<number>`, which must survive any reordering. A
+    // header which is not TEL carries the code of TEL's error in place of a variant,
+    // `↯/f.15.2/s.118.1/t.1.7`; an invalid one is reported as a diagnostic for each rejection,
+    // whose code is the variant carrying the code of the TEL error which rejected it.
+    enum Reason(val number: Int):
+      case Unreadable(detail: Text, code: fulminate.Bolt) extends Reason(1)
+      case NoSeparator                                   extends Reason(2)
+      case Invalid(rejections: List[Rejection])          extends Reason(3)
 
     given communicable: Reason is Communicable =
-      case Reason.Unreadable(detail) =>
+      case Reason.Unreadable(detail, _) =>
         m"the header is not a TEL document: $detail"
 
       case Reason.NoSeparator =>
@@ -73,7 +80,10 @@ object Script:
         m"the header has ${items.size} problems"
 
   case class Error(reason: Error.Reason)(using Diagnostics)
-  extends fulminate.Error(m"the script header is invalid: $reason")
+  extends fulminate.Error(m"the script header is invalid: $reason"):
+    override def bolt: fulminate.Bolt = reason match
+      case Error.Reason.Unreadable(_, code) => FeverBolts(2).carrying(code)
+      case reason                           => FeverBolts(2, reason.number)
 
   // `resident` is a §20 flag — keyword presence alone — which a Scala `Boolean` is not: the
   // derivation's own decoder reads an explicit `true`/`false` atom. This Flag-natured one reads
@@ -91,7 +101,8 @@ object Script:
   def parse(text: Text): Parsed raises Script.Error =
     val document =
       mitigate:
-        case error: Tel.Error => Script.Error(Error.Reason.Unreadable(error.message.text))
+        case error: Tel.Error =>
+          Script.Error(Error.Reason.Unreadable(error.message.text, error.bolt))
 
       . protect(text.load[Tel])
 
@@ -108,7 +119,8 @@ object Script:
     val rejections = validate[Tel.Focus](Rejections()):
       case error: Tel.Error =>
         val pointer = prior.let(_.pointer.encode).or(t"/")
-        accrual.add(Rejection(pointer, prior.lay(Span.empty)(_.span), error.message.text))
+        val span = prior.lay(Span.empty)(_.span)
+        accrual.add(Rejection(pointer, span, error.message.text, error.bolt))
 
     . protect(Tels.Decoder.validate(document.root)(using schema, Tel.Validator.Registry.builtins))
 

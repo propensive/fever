@@ -85,7 +85,7 @@ object Compile:
   def compile
     ( file: Text, body: Text, flags: List[Text], classpath: LocalClasspath, out: Path on Linux )
     ( using Monitor, System )
-  :   CompileProcess raises Compiler.Error =
+  :   Compiler.Process raises Compiler.Error =
 
     val options = (baseline + flags).map(Scalac.Option[Scalac.Versions](_))
     Scalac[3.9](options)(classpath)(Map(file -> body), out)
@@ -98,13 +98,16 @@ object Compile:
   // around it, numbered as the script numbers them (the body keeps the file's line numbering),
   // with the place marked. The compiler names the virtual source by its last segment alone, so
   // the script's path is supplied.
-  def report(notice: Notice, file: Text, lines: List[Block.Line], width: Int)(using Stdio): Unit =
+  def report(notice: Compiler.Notice, file: Text, lines: List[Block.Line], width: Int)
+    ( using Stdio )
+  :   Unit =
+
     val diagnostic: Block = Notices.diagnostic(notice.copy(file = file), lines)
     TerminalRenderer().print(List(diagnostic), width)
 
   // A diagnostic as scalac prints one, `file:line:column: severity: message`, the one-line form
   // an editor parses.
-  def render(notice: Notice, file: Text): Text =
+  def render(notice: Compiler.Notice, file: Text): Text =
     val position: Text = notice.span.lay(t""): span =>
       val line = span.startLine.let(_.n1).or(0)
       val column = span.startColumn.let(_.n1).or(0)

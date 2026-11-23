@@ -34,7 +34,7 @@ package fever
 
 // The bolt codes of Fever, `↯/f.15` and `↯/f.16`: the subdivisions of the letter Fever shares
 // with Pyrocosm and its other tools (`pyrocosm.Bolts`), one for each of Fever's modules. The
-// record of what every code means is `f.tel` in propensive/bolt.
+// record of what every code means is `bolt.tel` in propensive/pyrocosm.
 object FeverBolts:
   final val core     = 15
   final val launcher = 16

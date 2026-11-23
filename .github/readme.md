@@ -48,8 +48,9 @@ through `run` or as `./name`. Arguments after the file are the script's.
 
 Every failure Fever reports is named by a [bolt code](https://github.com/propensive/bolt), shown
 before its message as `[↯/f.15.2.3]`: Fever's codes are `↯/f.15` (its core) and `↯/f.16` (its
-launcher), whose meanings are recorded in `f.tel` there. A failure on account of another, such as
-a header which is not TEL, carries that one's code after its own, `↯/f.15.2/s.118.1/t.1.7`.
+launcher), whose meanings are recorded in Pyrocosm's `bolt.tel`. A failure on account of another,
+such as a header which is not TEL, carries that one's code after its own,
+`↯/f.15.2/s.118.1/t.1.7`.
 
 ## Usage
 

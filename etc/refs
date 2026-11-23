@@ -7,6 +7,6 @@
 #
 # Fever is a Pyrocosm tool, and implements the `lira.tool` contract, which is the `lira-tool` jar
 # of a propensive/lira release.
-propensive/soundness	0.78.0
-propensive/pyrocosm	0.15.0
+propensive/soundness	0.79.0
+propensive/pyrocosm	0.16.0
 propensive/lira	0.5.0
